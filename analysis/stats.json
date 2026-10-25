@@ -1,0 +1,626 @@
+{
+  "n_spectra": 2539608,
+  "n_structures": 275810,
+  "library_sizes": [
+    {
+      "ingest_lib": "enveda-180",
+      "spectra": 1153785,
+      "structures": 182941
+    },
+    {
+      "ingest_lib": "pluskal_ms2",
+      "spectra": 527581,
+      "structures": 46821
+    },
+    {
+      "ingest_lib": "riken",
+      "spectra": 347171,
+      "structures": 15892
+    },
+    {
+      "ingest_lib": "gnps",
+      "spectra": 220849,
+      "structures": 45750
+    },
+    {
+      "ingest_lib": "massbank",
+      "spectra": 101727,
+      "structures": 9180
+    },
+    {
+      "ingest_lib": "mona",
+      "spectra": 92416,
+      "structures": 11681
+    },
+    {
+      "ingest_lib": "spectraverse",
+      "spectra": 50933,
+      "structures": 9631
+    },
+    {
+      "ingest_lib": "msdial",
+      "spectra": 40765,
+      "structures": 9127
+    },
+    {
+      "ingest_lib": "drug_plus",
+      "spectra": 2545,
+      "structures": 2539
+    },
+    {
+      "ingest_lib": "enveda-np-examples",
+      "spectra": 1184,
+      "structures": 250
+    },
+    {
+      "ingest_lib": "masaryk",
+      "spectra": 652,
+      "structures": 416
+    }
+  ],
+  "spectra_per_structure": {
+    "median": 6.0,
+    "mean": 9.207816975454117,
+    "max": 1468,
+    "share_1_spectrum": 0.061756281498132774
+  },
+  "overlap": {
+    "structures_total": 275810,
+    "single_library_share": 0.8980711359269062,
+    "share_unique_to_lib": {
+      "enveda-180": 0.9874932355240214,
+      "pluskal_ms2": 0.613784412977083,
+      "riken": 0.08299773470928769,
+      "gnps": 0.5425792349726776,
+      "massbank": 0.18572984749455337,
+      "mona": 0.0158376851296978,
+      "spectraverse": 0.9902398504828159,
+      "msdial": 0.062013805193382274,
+      "drug_plus": 0.0626230799527373,
+      "enveda-np-examples": 0.0,
+      "masaryk": 0.028846153846153848
+    },
+    "np_examples_in_other_libs": 1.0
+  },
+  "mass": {
+    "structures_in_test_range": 0.9905297124832312,
+    "spectra_precursor_gt_2000": 25,
+    "median_structure_mass": 333.16233138117
+  },
+  "adducts": {
+    "n_distinct": 121,
+    "share_test_adducts": 0.8571704767034912,
+    "top10": {
+      "[M+H]+": 1324585,
+      "[M-H]-": 465688,
+      "[2M+Na]+": 190033,
+      "[M+Na]+": 178092,
+      "[2M+H]+": 92041,
+      "[M+CH2O2-H]-": 83188,
+      "[2M-H]-": 56172,
+      "[M+NH4]+": 53452,
+      "[M+Cl]-": 27511,
+      "[M-H2O+H]+": 21682
+    }
+  },
+  "polarity": {
+    "positive": 0.7480052039527361,
+    "negative": 0.251994796047264
+  },
+  "instrument_family": {
+    "timsTOF": 0.45478239161319384,
+    "Orbitrap / FT": 0.37396440710534856,
+    "other Q-TOF / TOF": 0.1330374608994774,
+    "triple quad": 0.014282519191938283,
+    "missing": 0.013397736973580175,
+    "ion trap": 0.009608963273072065,
+    "other": 0.0009265209433896885
+  },
+  "collision_energy": {
+    "units": {
+      "eV": 0.5390233453351856,
+      "NCE": 0.31070385665819295,
+      "unknown": 0.12800321939448922,
+      "V": 0.022269578612132267
+    },
+    "share_missing_ev": 0.13287208104557868,
+    "share_merged": 0.1951096389679037,
+    "np_examples_merged": 0.3471283783783784,
+    "np_examples_energies": {
+      "40": 213,
+      "20;50": 209,
+      "60": 200,
+      "35": 124,
+      "20": 114,
+      "80": 110,
+      "20;40;60;80": 100,
+      "20;40;60": 81,
+      "0;20;40;60;80": 15,
+      "50": 11
+    }
+  },
+  "peaks": {
+    "median_raw": 42.0,
+    "max_raw": 73318,
+    "median_clean": 13.0,
+    "share_clean_lt6": 0.21131017070351016,
+    "share_clean_gt128": 0.021056793016875044,
+    "share_with_peaks_above_prec": 0.20313371197444646,
+    "per_lib": {
+      "enveda-180": {
+        "fewer than 6 peaks after cleaning": 0.14103840836897688,
+        "more than 128 peaks after cleaning": 0.005490624336423164,
+        "has peaks above precursor+2 Da": 0.2449442487118484
+      },
+      "pluskal_ms2": {
+        "fewer than 6 peaks after cleaning": 0.21680841425297726,
+        "more than 128 peaks after cleaning": 0.001705899188939708,
+        "has peaks above precursor+2 Da": 0.00807269405077135
+      },
+      "riken": {
+        "fewer than 6 peaks after cleaning": 0.43844099881614534,
+        "more than 128 peaks after cleaning": 0.03962312520343001,
+        "has peaks above precursor+2 Da": 0.3101756771158881
+      },
+      "gnps": {
+        "fewer than 6 peaks after cleaning": 0.16164890943585888,
+        "more than 128 peaks after cleaning": 0.06520744943377602,
+        "has peaks above precursor+2 Da": 0.3081788914597757
+      },
+      "massbank": {
+        "fewer than 6 peaks after cleaning": 0.35650318991025,
+        "more than 128 peaks after cleaning": 0.015846333815014695,
+        "has peaks above precursor+2 Da": 0.04316454825169326
+      },
+      "mona": {
+        "fewer than 6 peaks after cleaning": 0.1602428150969529,
+        "more than 128 peaks after cleaning": 0.10133526662049862,
+        "has peaks above precursor+2 Da": 0.4237036876731302
+      },
+      "spectraverse": {
+        "fewer than 6 peaks after cleaning": 0.15398660986001217,
+        "more than 128 peaks after cleaning": 0.08954901537313725,
+        "has peaks above precursor+2 Da": 0.12547856988592856
+      },
+      "msdial": {
+        "fewer than 6 peaks after cleaning": 0.29927633999754694,
+        "more than 128 peaks after cleaning": 0.05232429780448915,
+        "has peaks above precursor+2 Da": 0.07960260026983933
+      },
+      "drug_plus": {
+        "fewer than 6 peaks after cleaning": 0.05776031434184676,
+        "more than 128 peaks after cleaning": 0.11944990176817288,
+        "has peaks above precursor+2 Da": 0.031041257367387033
+      },
+      "enveda-np-examples": {
+        "fewer than 6 peaks after cleaning": 0.052364864864864864,
+        "more than 128 peaks after cleaning": 0.09206081081081081,
+        "has peaks above precursor+2 Da": 0.0
+      },
+      "masaryk": {
+        "fewer than 6 peaks after cleaning": 0.44785276073619634,
+        "more than 128 peaks after cleaning": 0.0,
+        "has peaks above precursor+2 Da": 0.0
+      }
+    }
+  },
+  "peak_level": {
+    "enveda-180 (timsTOF, synthetic)": {
+      "share_below_1pct": 0.9182626138338684,
+      "share_above_precursor": 0.03243048690336152
+    },
+    "enveda-np-examples (test-like)": {
+      "share_below_1pct": 0.8030252654102543,
+      "share_above_precursor": 0.032359476586289196
+    },
+    "public libraries": {
+      "share_below_1pct": 0.5218557075563989,
+      "share_above_precursor": 0.054335355962729814
+    }
+  },
+  "quality": {
+    "ppm_abs_median": 1.5121583050568788,
+    "share_ppm_gt10": 0.06893504824366595,
+    "share_ppm_gt20": 0.04706001871154918,
+    "per_lib_ppm": {
+      "enveda-180": {
+        "> 5 ppm": 0.004514705946081809,
+        "> 10 ppm": 0.0,
+        "> 20 ppm": 0.0,
+        "> 100 ppm": 0.0
+      },
+      "pluskal_ms2": {
+        "> 5 ppm": 0.09632264998170897,
+        "> 10 ppm": 0.09626957756249752,
+        "> 20 ppm": 0.09626957756249752,
+        "> 100 ppm": 0.09626957756249752
+      },
+      "riken": {
+        "> 5 ppm": 0.4330834084644167,
+        "> 10 ppm": 0.2652727330335771,
+        "> 20 ppm": 0.11538982230658666,
+        "> 100 ppm": 0.061669897543285584
+      },
+      "gnps": {
+        "> 5 ppm": 0.13072732953284824,
+        "> 10 ppm": 0.08321975648520029,
+        "> 20 ppm": 0.07311330365996677,
+        "> 100 ppm": 0.06835439599002033
+      },
+      "massbank": {
+        "> 5 ppm": 0.09514681451335437,
+        "> 10 ppm": 0.07612531579619963,
+        "> 20 ppm": 0.06871332094724114,
+        "> 100 ppm": 0.0600922075751767
+      },
+      "mona": {
+        "> 5 ppm": 0.0911205851800554,
+        "> 10 ppm": 0.06327908587257618,
+        "> 20 ppm": 0.05783630540166205,
+        "> 100 ppm": 0.050759608725761775
+      },
+      "spectraverse": {
+        "> 5 ppm": 0.009365244536940686,
+        "> 10 ppm": 0.00045157363595311486,
+        "> 20 ppm": 9.816818172893802e-05,
+        "> 100 ppm": 9.816818172893802e-05
+      },
+      "msdial": {
+        "> 5 ppm": 0.019011406844106463,
+        "> 10 ppm": 0.0023549613639151233,
+        "> 20 ppm": 0.0021341837360480806,
+        "> 100 ppm": 0.0021341837360480806
+      },
+      "drug_plus": {
+        "> 5 ppm": 0.057367387033398824,
+        "> 10 ppm": 0.03536345776031434,
+        "> 20 ppm": 0.034970530451866405,
+        "> 100 ppm": 0.034970530451866405
+      },
+      "enveda-np-examples": {
+        "> 5 ppm": 0.02533783783783784,
+        "> 10 ppm": 0.0016891891891891893,
+        "> 20 ppm": 0.0008445945945945946,
+        "> 100 ppm": 0.0
+      },
+      "masaryk": {
+        "> 5 ppm": 0.003067484662576687,
+        "> 10 ppm": 0.0015337423312883436,
+        "> 20 ppm": 0.0,
+        "> 100 ppm": 0.0
+      }
+    },
+    "base_peak_null_share": 0.4579990297715238,
+    "base_peak_lt1000_share_of_nonnull": 0.05873139262025326,
+    "gnps_base_peak_eq_100": 0.30999913968367526,
+    "gnps_base_peak_eq_999": 0.0193525893257384,
+    "base_peak_null_by_lib": {
+      "drug_plus": 1.0,
+      "enveda-180": 0.0,
+      "enveda-np-examples": 0.0,
+      "gnps": 0.0,
+      "masaryk": 0.0,
+      "massbank": 1.0,
+      "mona": 1.0,
+      "msdial": 1.0,
+      "pluskal_ms2": 1.0,
+      "riken": 1.0,
+      "spectraverse": 1.0
+    }
+  },
+  "mz_precision": {
+    "enveda-180": {
+      "0": 0.00020021061116239162,
+      "1": 0.0004012879349272178,
+      "2": 0.009770451167245198,
+      "3": 0.0895981487018812,
+      "4": 0.900029901584784,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "pluskal_ms2": {
+      "0": 8.150407236045271e-05,
+      "1": 8.908584653351808e-05,
+      "2": 0.005477831840039729,
+      "3": 0.10631732378535239,
+      "4": 0.8880342544557139,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "riken": {
+      "0": 0.014690167093449625,
+      "1": 0.02237514078076798,
+      "2": 0.11467835735127646,
+      "3": 0.8459894403622422,
+      "4": 0.0022668944122636973,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "gnps": {
+      "0": 0.01971482777825573,
+      "1": 0.001974199566219453,
+      "2": 0.010405299548560329,
+      "3": 0.0919315912682421,
+      "4": 0.8759740818387224,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "massbank": {
+      "0": 0.03502511624249216,
+      "1": 0.0517856616237577,
+      "2": 0.025843679652403,
+      "3": 0.07746222733394281,
+      "4": 0.8098833151474043,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "mona": {
+      "0": 0.0066330505540166205,
+      "1": 0.03897593490304709,
+      "2": 0.024021814404432133,
+      "3": 0.08922697368421052,
+      "4": 0.8411422264542936,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "spectraverse": {
+      "0": 0.00033377181787838927,
+      "1": 0.0008442463628688669,
+      "2": 0.013174169988023482,
+      "3": 0.1360610998763081,
+      "4": 0.8495867119549212,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "msdial": {
+      "0": 0.1405862872562247,
+      "1": 0.10199926407457377,
+      "2": 0.16580399852814914,
+      "3": 0.589623451490249,
+      "4": 0.0019869986508033854,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "drug_plus": {
+      "0": 0.08055009823182711,
+      "1": 0.0381139489194499,
+      "2": 0.015324165029469547,
+      "3": 0.07976424361493124,
+      "4": 0.7862475442043222,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "enveda-np-examples": {
+      "0": 0.0,
+      "1": 0.0,
+      "2": 0.0,
+      "3": 0.0033783783783783786,
+      "4": 0.044763513513513514,
+      "5": 0.18412162162162163,
+      "6": 0.5532094594594594,
+      "7": 0.21452702702702703
+    },
+    "masaryk": {
+      "0": 0.0015337423312883436,
+      "1": 0.0,
+      "2": 0.007668711656441718,
+      "3": 0.07975460122699386,
+      "4": 0.911042944785276,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    }
+  },
+  "chemistry": {
+    "enveda-180": {
+      "contains N": 0.9996118967317332,
+      "contains S": 0.28304207367402606,
+      "contains P": 0.0,
+      "contains halogen": 0.35495596941090296,
+      "CHO only": 4.3729945720204874e-05
+    },
+    "pluskal_ms2": {
+      "contains N": 0.8958586958843254,
+      "contains S": 0.3050554238482732,
+      "contains P": 0.0030969009632429894,
+      "contains halogen": 0.30298370389355206,
+      "CHO only": 0.09297110271032229
+    },
+    "riken": {
+      "contains N": 0.48889168607212535,
+      "contains S": 0.07552394738498332,
+      "contains P": 0.08578261690477688,
+      "contains halogen": 0.09075461010762162,
+      "CHO only": 0.46359116369815595
+    },
+    "gnps": {
+      "contains N": 0.7828520210742628,
+      "contains S": 0.1605272937935859,
+      "contains P": 0.03434405264193428,
+      "contains halogen": 0.17108628642633847,
+      "CHO only": 0.1931880287694292
+    },
+    "massbank": {
+      "contains N": 0.6220309435606886,
+      "contains S": 0.12704292874264544,
+      "contains P": 0.16081935062105035,
+      "contains halogen": 0.13663107430812813,
+      "CHO only": 0.28851601656134235
+    },
+    "mona": {
+      "contains N": 0.5017552872677455,
+      "contains S": 0.08339755116020207,
+      "contains P": 0.06481719325284699,
+      "contains halogen": 0.10154979022176557,
+      "CHO only": 0.45140851100265433
+    },
+    "spectraverse": {
+      "contains N": 0.49454885266327486,
+      "contains S": 0.04070190011421452,
+      "contains P": 0.30214930952133734,
+      "contains halogen": 0.04900841034160523,
+      "CHO only": 0.4031772401619769
+    },
+    "msdial": {
+      "contains N": 0.456986301369863,
+      "contains S": 0.06378082191780822,
+      "contains P": 0.08536986301369863,
+      "contains halogen": 0.052054794520547946,
+      "CHO only": 0.4983013698630137
+    },
+    "drug_plus": {
+      "contains N": 0.780449349625542,
+      "contains S": 0.18683484430429642,
+      "contains P": 0.04808829325975562,
+      "contains halogen": 0.21127315727236895,
+      "CHO only": 0.18368151359873866
+    },
+    "enveda-np-examples": {
+      "contains N": 0.472,
+      "contains S": 0.036,
+      "contains P": 0.008,
+      "contains halogen": 0.052,
+      "CHO only": 0.516
+    },
+    "masaryk": {
+      "contains N": 0.8774038461538461,
+      "contains S": 0.20192307692307693,
+      "contains P": 0.026442307692307692,
+      "contains halogen": 0.3125,
+      "CHO only": 0.0985576923076923
+    }
+  },
+  "funnel": [
+    {
+      "step": "all spectra",
+      "spectra": 2539608,
+      "structures": 275810
+    },
+    {
+      "step": "test adduct",
+      "spectra": 2176877,
+      "structures": 269846
+    },
+    {
+      "step": "|ppm| \u2264 10",
+      "spectra": 2000097,
+      "structures": 267624
+    },
+    {
+      "step": "base peak \u2265 1,000 (null/100/999 kept)",
+      "spectra": 1993927,
+      "structures": 266991
+    },
+    {
+      "step": "\u2265 6 peaks after cleaning",
+      "spectra": 1665533,
+      "structures": 263166
+    },
+    {
+      "step": "(optional) collision_energy_ev known",
+      "spectra": 1425219,
+      "structures": 231547
+    }
+  ],
+  "funnel_kept_by_lib": {
+    "enveda-180": 0.6746040206797627,
+    "pluskal_ms2": 0.7144665937552717,
+    "riken": 0.4339849814644656,
+    "gnps": 0.7302364964296872,
+    "massbank": 0.5665260943505658,
+    "mona": 0.7767810768698061,
+    "spectraverse": 0.7728584611155832,
+    "msdial": 0.6327241506194039,
+    "drug_plus": 0.8848722986247545,
+    "enveda-np-examples": 0.9467905405405406,
+    "masaryk": 0.5506134969325154
+  },
+  "missing_by_lib": {
+    "enveda-180": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 0.0,
+      "collision_energy_orig": 0.0,
+      "collision_energy_ev": 0.0
+    },
+    "pluskal_ms2": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.0004075203618022635,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.0,
+      "collision_energy_ev": 0.0
+    },
+    "riken": {
+      "instrument_type": 0.04747804396104513,
+      "precursor_error_ppm": 0.00018434719489819138,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.06551814523678533,
+      "collision_energy_ev": 0.09125186147460473
+    },
+    "gnps": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.00041204623973846384,
+      "base_peak_intensity": 0.0,
+      "collision_energy_orig": 1.0,
+      "collision_energy_ev": 1.0
+    },
+    "massbank": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.03116183510769019,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.0029294091047607812,
+      "collision_energy_ev": 0.018795403383565817
+    },
+    "mona": {
+      "instrument_type": 0.0062543282548476456,
+      "precursor_error_ppm": 0.008072195290858725,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.15029864958448755,
+      "collision_energy_ev": 0.1703709314404432
+    },
+    "spectraverse": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.9182651718924862,
+      "collision_energy_ev": 0.9242534309779514
+    },
+    "msdial": {
+      "instrument_type": 0.3298908377284435,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 0.31188519563350914,
+      "collision_energy_ev": 0.4166564454801913
+    },
+    "drug_plus": {
+      "instrument_type": 0.999607072691552,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 1.0,
+      "collision_energy_orig": 1.0,
+      "collision_energy_ev": 1.0
+    },
+    "enveda-np-examples": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 0.0,
+      "collision_energy_orig": 0.0,
+      "collision_energy_ev": 0.0
+    },
+    "masaryk": {
+      "instrument_type": 0.0,
+      "precursor_error_ppm": 0.0,
+      "base_peak_intensity": 0.0,
+      "collision_energy_orig": 1.0,
+      "collision_energy_ev": 1.0
+    }
+  }
+}

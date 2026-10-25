@@ -25,3 +25,9 @@ kaggle_assets/
 *.npz
 *.npy
 *.parquet
+
+# Eval-set simulator outputs and cache
+dataset-creation/out/
+
+# Class-1 experiment outputs and library cache
+max_class1_exp/out/
