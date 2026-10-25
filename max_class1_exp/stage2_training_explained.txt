@@ -1,0 +1,283 @@
+WHAT STAGE 2 TRAINES AND WHICH ML MODELS/CONCEPTS ARE USED
+===========================================================
+
+What stage 2 trains
+-------------------
+
+A learning-to-rank re-ranker: a small supervised model that takes a stage-1
+shortlist (query spectrum -> ~76 candidate molecules within +/-10 ppm) and
+re-sorts it by "probability of being the truth". Nothing about retrieval
+changes -- stage 2 only reorders what stage 1 already found. It is a POINTWISE
+ranker, implemented as plain binary classification: every (query, candidate)
+pair gets a feature row and a label -- 1 if the candidate is the query's true
+molecule, 0 otherwise. Final ranking = sort candidates by predicted P(truth).
+
+The training data (built in memory, never from a file)
+------------------------------------------------------
+
+Training examples are simulated on the fly from train.parquet itself,
+reusing the dataset simulator's logic:
+
+1. Sampling: --n-train molecules are drawn (seeded, reproducible) from the
+   pools of molecules that *qualify* for a change type -- e.g. for "adduct":
+   has >= 2 spectra with different adducts. Quotas follow --train-mix
+   (e.g. 6000 all-adduct). Eval molecules are hard-excluded (asserted at
+   runtime, rule R1).
+
+2. Pseudo-query: for each sampled molecule, one measurement setting is held
+   out as a fake "unknown query" -- its other rows are hidden from the
+   training library (rule R2), exactly mirroring how the eval split was built.
+
+3. Shortlist: +/-10 ppm mass window over the visible library -> the candidate
+   set; the held-out molecule is guaranteed to be in it (shortlists without
+   it are dropped).
+
+4. Labels: exactly one positive per shortlist (asserted) -> with a median of
+   ~76 candidates, classes are ~1.3% positive -- extreme imbalance, which the
+   models counter with class_weight="balanced".
+
+So "the dataset" is a matrix of roughly n_train x 76 rows x 14 features,
+constructed fresh each run, in RAM only.
+
+The 14 features (all deterministic, one shared featurize function)
+------------------------------------------------------------------
+
+stage-1 scores:
+  entropy_best      spectral similarity (entropy-weighted) of the query to
+                    the candidate's BEST library spectrum -- what stage 1
+                    already ranked by
+  cosine_best       same, cosine similarity
+  entropy_composite same, against the candidate's MERGED spectrum (all its
+                    library spectra in that polarity, entropy-weighted)
+
+neutral losses (the key innovation):
+  nl_entropy_best   similarity in NEUTRAL-LOSS space: for each query peak,
+                    precursor - fragment m/z. The fragment spectrum changes
+                    when the adduct changes, but many neutral losses (H2O,
+                    CO2, ...) are adduct-invariant chemistry. This feature can
+                    rescue adduct changes when plain fragment similarity
+                    cannot.
+  nl_cosine_best    same, cosine similarity
+
+match statistics:
+  matched_peaks         how many query peaks find a tol-match in the best
+                        library spectrum
+  explained_intensity   what fraction of the candidate's intensity those
+                        matches explain
+  mass_error_ppm        signed precursor-mass error (how central the
+                        candidate sits in the window)
+  n_library_spectra     how many visible spectra the candidate has
+
+setting flags:
+  has_same_adduct           any library spectrum with the query's adduct
+  has_same_polarity         any library spectrum in the query's polarity
+  same_instrument_family    any non-timsTOF library spectrum
+
+context:
+  min_ce_gap        smallest |CE difference| to the query's collision energy
+                    (nan -> imputed 100)
+  n_source_libraries    how many distinct ingest libraries the candidate's
+                        spectra come from
+
+(n_candidates is computed per row but deliberately excluded from the model --
+it is constant within a shortlist.)
+
+Averages are over the query's spectra, maxima ("best") over the candidate's
+library spectra -- identical conventions to stage 1, so stage-2 scores and
+stage-1 scores are directly comparable.
+
+The feature-engineering concept: contrast within the set
+--------------------------------------------------------
+
+Continuous features are Z-SCORED WITHIN EACH SHORTLIST (zscore_within_sets):
+for a query with 76 candidates, "entropy_best = 0.83" is meaningless in
+isolation (some queries are just "cleaner" than others), but "0.83 is +2.1
+sigma above this shortlist's mean" tells the model exactly what it needs:
+how this candidate COMPARES TO ITS COMPETITORS. Constant columns within a
+set become zero. The three setting flags stay raw 0/1 (they are already
+relative facts). The same transform is applied identically at fit and
+predict time (rule R4 -- one model_matrix for both), which is what makes a
+model trained on simulated queries valid on real eval queries.
+
+The two models
+--------------
+
+1. Logistic regression (sklearn LogisticRegression, C=1.0,
+   class_weight="balanced"): a linear model over the 14 features ->
+   P(truth) = sigmoid(w.z + b). Interpretable (each coefficient says how a
+   feature moves the ranking, e.g. the small run learned
+   has_same_adduct ~ -2.8: for adduct-change queries, a candidate sharing the
+   query's adduct is probably a decoy), well-calibrated, nearly impossible to
+   overfit, trains in seconds. The perfect low-capacity baseline.
+
+2. HistGradientBoostingClassifier (max_depth=3, max_iter=300, early
+   stopping on 10% of rows with patience 20, balanced weights): sklearn's
+   LightGBM-style GRADIENT BOOSTING -- it builds up to 300 shallow decision
+   trees sequentially, each fitting the residual errors of the ensemble so
+   far; "histogram" refers to how it bins features for speed. Depth-3 trees
+   can capture interactions logistic regression cannot express (e.g.
+   "has_same_adduct only hurts when nl_entropy_best is low") while remaining
+   far too small to memorize data.
+
+Both are CPU-only, deterministic given the seed, no deep learning -- that is
+the plan's rule R6: the win must come from the features (neutral losses,
+within-set contrast), not from model capacity. The small-model choice is
+deliberate: with ~230k training rows, a big model would learn the simulator's
+quirks, not mass spectrometry.
+
+Training protocol and selection
+-------------------------------
+
+- Group-wise holdout (rule R5): 10% of MOLECULES -- whole shortlists, not
+  random rows -- are held out; training rows from the same shortlist never
+  straddle the split.
+- Both models are fit on the remaining 90%, evaluated on the holdout by
+  MRR@25; the better one becomes the PRIMARY model (marked * in the table)
+  and is saved to <split>_stage2_model.joblib together with the feature list
+  and z-scoring conventions.
+- At eval time, the loaded model scores every eval shortlist and re-ranks;
+  the printed table compares stage-1 and stage-2 columns on identical
+  shortlists.
+
+What the model actually learns (from the real coefficients)
+-----------------------------------------------------------
+
+Distilled from the small run's fitted logistic model: "the truth tends to
+have high entropy AND neutral-loss similarity relative to the other
+candidates in the window, and -- for adduct-change queries -- tends to live
+in a different adduct setting than the query." The flags encode the failure
+mode directly; the neutral-loss features provide the positive evidence that
+fragment-only similarity loses when the adduct changes. That combination is
+what lifted adduct-case MRR from 0.384 (stage 1) to 0.552 even with only 300
+training molecules.
+
+
+HOW THE TRAINING WORKS IN DETAIL (ITERATIONS, OPTIMIZATION)
+===========================================================
+
+The overall shape: one pass, no epochs
+--------------------------------------
+
+There is no training LOOP at the stage-2 level. A run does exactly this,
+once:
+
+    build matrix Z (~6000 shortlists x ~76 candidates = ~456k rows x 14 features)
+            |
+            +-- hold out 10% of MOLECULES (whole shortlists)  <- for model selection
+            |
+            +-- fit logistic on the 90%          <- training run #1
+            +-- fit HGB on the same 90%           <- training run #2
+            |
+            +-- score both on the held-out 10% (MRR@25)
+            +-- keep the better one as primary, save to .joblib
+
+No cross-validation grid, no epochs, no re-training. The only "search" is
+the binary choice between the two fitted models. All iteration happens
+INSIDE each fit -- and that is where the two models differ fundamentally.
+
+Model 1: logistic regression -- optimization by lbfgs
+-----------------------------------------------------
+
+WHAT'S LEARNED: 14 coefficients + 1 intercept. The model is
+P(truth) = sigmoid(w.z + b), a single linear surface in feature space.
+
+THE OBJECTIVE: logistic loss (cross-entropy) + L2 penalty. C=1.0 is the
+INVERSE regularization strength -- each coefficient pays ||w||^2 / 2C for
+growing, which keeps the model honest when features are correlated.
+
+THE "ITERATIONS" are not epochs over the data -- they are OPTIMIZATION
+STEPS OF LBFGS, a quasi-Newton solver:
+
+1. Start at w = 0.
+2. Each step computes the gradient of the loss over THE ENTIRE DATASET AT
+   ONCE (batch optimization -- no mini-batches, no SGD, no GPU).
+3. lbfgs maintains a compressed history of past gradients to APPROXIMATE THE
+   CURVATURE (second-order information), so it takes near-Newton steps:
+   typically converges in tens to a few hundred steps, far fewer than
+   gradient descent would need.
+4. It stops when the gradient is numerically flat, or at the max_iter=5000
+   cap (in practice it converges long before).
+
+Because the problem is CONVEX, there is one optimum -- the fit is fully
+deterministic, seed-independent, and reproducible. "Training" here is
+really just SOLVING AN EQUATION BY ITERATION.
+
+CLASS IMBALANCE HANDLING: class_weight="balanced" reweights the log-loss:
+positives (~1.3% of rows) count ~38x more, negatives ~0.51x. Without it, the
+loss is minimized by predicting "negative" for everything -- 98.7% accurate,
+useless for ranking. With it, the optimizer must actually separate positives
+from negatives, which is all ranking needs.
+
+Concretely, from the small run: entropy_best ~ +2.1, nl_entropy_best ~ +1.3,
+has_same_adduct ~ -2.8 -- the fitted surface is directly readable as "higher
+similarity than the shortlist average helps; sharing the query's adduct
+hurts (in adduct-change training data)".
+
+Model 2: gradient boosting -- iterations ARE trees
+--------------------------------------------------
+
+WHAT'S LEARNED: an additive ensemble of up to 300 tiny regression trees,
+F(z) = F0 + lr * sum_t tree_t(z), mapped through a sigmoid at the end.
+
+ONE BOOSTING ITERATION (= one tree):
+
+1. Start with a constant prediction F0 = the (weighted) log-odds of the
+   positive class.
+2. For every row, compute the GRADIENT OF THE LOG-LOSS with respect to the
+   current prediction. For logistic loss this pseudo-residual is simply
+   y_i - p_i: how wrong the current ensemble is on that row (residual +1 for
+   a missed positive, -p for a positive score given to a negative, etc.).
+3. Fit a DEPTH-3 REGRESSION TREE to those residuals -- it finds at most 8
+   leaf regions (<= 7 split rules) in the 14-dimensional feature space, each
+   leaf getting the mean residual of its rows.
+4. Add the tree's output to the ensemble, scaled by the learning rate
+   (sklearn default 0.1) -- small corrective steps, no single tree dominates.
+5. Repeat: the next tree now fits the REMAINING errors. Early trees capture
+   the big effects (overall similarity), later trees carve out interactions
+   (e.g. "same_adduct only hurts WHEN nl_similarity is below average").
+
+THE STOPPING RULE is where the real training dynamics live:
+early_stopping=True carves 10% of the rows off as an internal validation set,
+and after every new tree the ensemble's loss on that set is measured. If 20
+CONSECUTIVE TREES (n_iter_no_change=20) fail to improve it, fitting stops and
+the best iteration is kept. So the EFFECTIVE number of trees is data-driven --
+could be 60, could be 250 -- max_iter=300 is only a ceiling against
+overfitting and runtime.
+
+"HIST" = HISTOGRAM BINNING: before training, each feature is bucketed into
+<= 255 bins; split-finding then scans bins instead of sorting raw values.
+That is the LightGBM trick that makes this run in minutes on CPU.
+
+Note this internal 10% is a DIFFERENT thing from our 10% molecule holdout:
+HGB's own slice only decides WHEN TO STOP ADDING TREES; our molecule holdout
+decides WHICH MODEL TO KEEP.
+
+CLASS IMBALANCE: same idea -- class_weight="balanced" inflates the residuals
+of positives ~38x so the trees are forced to spend splits on getting them
+right.
+
+What the trained artifact is
+----------------------------
+
+After fitting, the joblib file contains:
+
+- logistic: 15 numbers (14 coefficients + intercept) -- kilobytes.
+- HGB: up to 300 trees x <= 7 split rules -- a few hundred kilobytes.
+
+Plus the feature list, the min_ce_gap imputation value, and the within-set
+z-scoring convention, so any future --model-path evaluation applies the
+identical transform. Prediction at eval time is one forward pass per
+shortlist: featurize -> z-score within the set -> predict_proba -> sort by
+P(truth).
+
+Why no epochs, GPUs, or bigger models
+--------------------------------------
+
+Epochs and stochastic gradients exist because neural nets are trained by SGD
+over huge datasets. Here the whole training set is ~450k rows x 14 features
+= ~50 MB in RAM -- both solvers (convex lbfgs, histogram boosting) consume it
+directly and deterministically. And per the plan (R6), the ceiling is
+deliberate: at this data size, a deep model would memorize the simulator's
+artifacts instead of learning mass spectrometry, and every gain so far has
+come from the FEATURES (neutral losses, within-set contrast), not from
+capacity.

@@ -3,7 +3,8 @@
 How well can we identify **class-1 molecules**, i.e. molecules that already have
 reference spectra in train, but measured in a different setting (another
 instrument, adduct or collision energy)? This folder holds the experiment.
-**Stage 1** (library search) is implemented and tested. Stages 2 and 3 are
+**Stage 1** (library search) and **Stage 2** (a learned re-ranker over the
+stage-1 shortlists, `stage2.py`) are implemented and tested. Stage 3 is
 planned and described below.
 
 The eval data comes from the eval-set simulator: by default
@@ -18,14 +19,20 @@ only the rows that differ in that dimension stay visible in train.
 From the repo root (`enveda_casmi/`):
 
 ```bash
-# 1. unit tests of the maths (no data, ~2 s)
+# 1. unit tests of the maths (no data, ~2 s / ~10 s)
 uv run python max_class1_exp/test_stage1.py
+uv run python max_class1_exp/test_stage2.py
 
 # 2. end-to-end self-test: eval spectra deliberately put into the library -> MRR must be ~1
 uv run python max_class1_exp/stage1.py --leak-eval --limit 100
+uv run python max_class1_exp/stage2.py --leak-train --limit 100   # same idea for stage 2
 
 # 3. the real evaluation (~1 min reading the library the first time, then cached)
 uv run python max_class1_exp/stage1.py
+
+# 4. stage 2: train the re-ranker on the fly and re-rank the stage-1 shortlists
+uv run python max_class1_exp/stage2.py --n-train 300 --limit 100   # small run (~minutes)
+uv run python max_class1_exp/stage2.py                             # full run (default 3000)
 ```
 
 The split must exist and match the dataset cache (`load_split` checks this).
@@ -169,26 +176,127 @@ Things to look at:
 
 ---
 
-## 7. Next stages (not implemented yet)
+## 7. Stage 2: learned re-ranker (`stage2.py`)
 
-### Stage 2: learned re-ranker over the top ~50 candidates
+Stage 1 retrieves all candidates within ±10 ppm (recall 1.0) and ranks them by
+spectral similarity; all remaining error is ranking error, concentrated in the
+`adduct` change type (an adduct change shifts fragment m/z, so literal peak
+matching misses matches). Stage 2 keeps the stage-1 shortlists and re-ranks
+them with a small tabular model trained on ~16 deterministic features per
+(query molecule, candidate) pair — logistic regression and/or scikit-learn's
+`HistGradientBoostingClassifier`. No neural network, no deep learning.
 
-Features per candidate, then a ranking model. Start with the repo's logistic
-`CandidateScorer`; `HistGradientBoostingClassifier` from scikit-learn is better
-and needs no new dependency.
+**Features** (mean over the query's spectra; "best" = max over the candidate's
+library spectra, as in stage 1):
 
-- best and mean entropy similarity, cosine, and **modified cosine** (peaks
-  shifted by the precursor mass difference, which helps across adducts);
-- **neutral-loss similarity** (precursor − fragment), which often survives an
-  adduct change;
-- matched peaks and explained intensity share;
-- mass error (ppm);
-- flags: same adduct / polarity / instrument type in the library, CE
-  difference;
-- how many source libraries contain the molecule (a "well-known compound" prior).
+| feature | definition |
+|---|---|
+| `entropy_best`, `cosine_best`, `entropy_composite` | the stage-1 scores (they are features now) |
+| `nl_entropy_best`, `nl_cosine_best` | the same in **neutral-loss space** (`nl = precursor − fragment`; algebraically the "modified cosine": library peaks shifted by the precursor difference). This is what survives an adduct change |
+| `matched_peaks`, `explained_intensity` | match statistics against the candidate's best-entropy library spectrum |
+| `mass_error_ppm` | abs ppm error of the candidate |
+| `n_library_spectra`, `n_candidates` | sizes (`n_candidates` is context only, never a model feature) |
+| `has_same_adduct`, `has_same_polarity`, `same_instrument_family` | setting flags (share of the query's spectra) |
+| `min_ce_gap` | min |query ce − candidate library ce| (nan → imputed to 100) |
+| `n_source_libraries` | how many source libraries contain the molecule (a "well-known compound" prior) |
 
-Training data: difficulty-1 splits with other seeds, built only from the
-visible rows, so the re-ranker learns exactly the cross-setting cases.
+Continuous features are z-scored **within each shortlist** (the
+`contrast_within_set` trick from `CandidateScorer`): the model learns how a
+candidate compares to its competitors, not absolute values. Labels:
+`y = (candidate == truth)`, exactly one positive per shortlist.
+
+**Training data is generated on the fly, in memory, from the regular train
+dataset** — never from a file, never from the eval split. For each sampled
+molecule the simulator building blocks (`make_difficulty1.qualifying` /
+`choose_rows`) hold out one setting as the pseudo-query, exactly like the eval
+split does. Leakage rules:
+
+- **R1** no eval molecule is ever a training query (no positive label for a
+  molecule the model is evaluated on) and no split-hidden row is ever visible;
+  eval molecules only appear in the roles they also play at evaluation time
+  (label-0 decoys, visible library rows). Both are asserted.
+- **R2** every training example holds the pseudo-query's rows out of the
+  library, so the truth is reachable only through its other settings. Asserted.
+- **R3** `change` / `difficulty` are simulator metadata, never features.
+- **R4** one shared `featurize` function serves training and evaluation.
+- **R5** all randomness from one seeded `np.random.default_rng(--train-seed)`.
+
+10% of the training molecules are held out as internal validation (model
+selection between logistic and HGB, reported in the metrics); the evaluation
+split is then used once, untouched.
+
+### Usage
+
+```
+uv run python max_class1_exp/stage2.py [--split ...] [--ppm 10] [--tol 0.02] [--noise 0.01]
+    [--n-train 3000] [--train-mix instrument=0.4,adduct=0.3,ce=0.3] [--train-seed 2027]
+    [--model logistic|hgb|both] [--limit N] [--workers N] [--no-cache]
+    [--leak-train] [--train-on-eval] [--model-path out/<split>_stage2_model.joblib]
+    [--out-dir max_class1_exp/out]
+```
+
+| flag | meaning |
+|---|---|
+| `--n-train`, `--train-mix`, `--train-seed` | size, change-type mix and seed of the on-the-fly training set (mix semantics as in `make_difficulty1.py`; quotas filled instrument → adduct → ce, shortfalls logged, never padded) |
+| `--model` | which re-ranker to fit; `both` (default) fits logistic and HGB and reports the better one on internal validation as primary (marked `*` in the table) |
+| `--model-path` | **skip training**: load a model saved by a previous run (`out/<split>_stage2_model.joblib`) and only evaluate. Training and evaluation are normally one command; this separates them. The feature list is checked against the model, and any split works (e.g. a split with another seed, or one built later) |
+| `--leak-train` | self-test: train on the eval shortlists with their spectra in the library — MRR(stage2) must be ≈ 1. Never use for real numbers |
+| `--train-on-eval` | diagnostic, not the headline: also draw training queries from the eval molecules (held-out setting disjoint from the split's hidden rows). Run it with the same `--train-seed` as a clean run; the per-change metric delta (leaked − clean) measures the label-leakage dispute |
+| `--limit` | only the first N *eval* molecules (training is unaffected) |
+| `--train`, `--cache-dir`, `--ppm-tol`, `--rebuild-cache` | dataset cache flags, as in `make_difficulty1.py` |
+
+### Memory
+
+The training-library build is the pipeline's memory peak (it is where a run
+dies if the box runs out of RAM). Worker processes each materialize one full
+parquet row group before taking their subset, so the concurrent readers are
+capped at 8; the eval library and the 2.5M-row metadata frame are freed before
+the build starts. The finished libraries are small (~0.5 GB of arrays even at
+`--n-train 6000`) — only the transient reads spike. If a run dies silently,
+check the kernel log for an OOM kill (`journalctl -k | grep -i oom`), and run
+big commands in an interactive shell or with `tmux set -g remain-on-exit on`
+so the exit message is not lost with the pane.
+
+### Outputs
+
+In `max_class1_exp/out/` (git-ignored), with the usual `_<split>` stem:
+
+- `<split>_stage2_results.parquet` — all stage-1 columns plus, per model,
+  `rank_stage2_<model>`, `rr_stage2_<model>`, `truth_score_/top_score_stage2_<model>`;
+  the primary model also gets the unsuffixed `rank_stage2`, `rr_stage2`,
+  `p_truth_stage2`, `truth_score_stage2`, `top_score_stage2`;
+- `<split>_stage2_features.parquet` — one row per candidate (molecule_id,
+  change, cand_key, label, all feature columns);
+- `<split>_stage2_metrics.json` — params, training summary (shortfalls, drops,
+  class balance, internal validation, feature importances) and the stage-1
+  summary structure extended with `stage2_logistic` / `stage2_hgb`;
+- `<split>_stage2_model.joblib` — the chosen model with the feature list and
+  the z-scoring conventions.
+
+The printed table is the stage-1 table with the `stage2_logistic` /
+`stage2_hgb` rows added (primary marked `*`).
+
+### Stage 2 results
+
+*To be filled in after the full run* (`uv run python max_class1_exp/stage2.py`).
+
+Success criteria (STAGE2_PLAN.md §6): overall MRR@25 of `stage2` ≥
+`entropy_best`'s 0.765; `adduct` clearly above stage 1's 0.393 (0.5+ would be
+a clear win); `ce` and `instrument` not degraded; neutral-loss and/or entropy
+features on top of the feature importances.
+
+Validation done so far (all with `--limit 100`):
+
+- `test_stage2.py`: 24 checks, all passing (neutral-loss equivalence with the
+  shifted-peak formulation, match statistics, featurize = pairwise
+  similarities + determinism, within-shortlist z-scoring, one positive label
+  per shortlist, end-to-end sampler → fit → predict on synthetic data);
+- `--leak-train`: MRR(stage2) 0.995 ≈ 1.0 — features → labels → fit →
+  predict → rank are wired correctly.
+
+---
+
+## 8. Next stages (not implemented yet)
 
 ### Stage 3: learned cross-instrument spectrum embedding
 
@@ -218,12 +326,15 @@ shortcut worth comparing.
 
 ---
 
-## 8. Files
+## 9. Files
 
 | file | content |
 |---|---|
-| `spectra.py` | cleaning, entropy weighting, entropy and cosine similarity (one query against many), merged spectra |
-| `library.py` | query mass, candidate index (mass window over visible molecules), parallel library loading and cache |
-| `stage1.py` | the evaluation CLI |
-| `test_stage1.py` | correctness tests |
-| `out/` | results and library cache (git-ignored) |
+| `spectra.py` | cleaning, entropy weighting, entropy and cosine similarity (one query against many), neutral losses, match statistics, merged spectra |
+| `library.py` | query mass, candidate index (mass window over visible molecules), parallel library loading and cache (with per-spectrum precursor, ce and source library) |
+| `stage1.py` | the stage-1 evaluation CLI |
+| `stage2.py` | the stage-2 re-ranker CLI (on-the-fly training, shared featurizer, logistic + HGB, evaluation) |
+| `test_stage1.py` | stage-1 correctness tests |
+| `test_stage2.py` | stage-2 correctness tests (incl. an end-to-end smoke test on synthetic data) |
+| `STAGE2_PLAN.md` | the implementation plan for stage 2 |
+| `out/` | results, models and library cache (git-ignored) |

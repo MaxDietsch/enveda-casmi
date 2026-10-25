@@ -33,7 +33,21 @@ from spectra import CleanParams, clean_spectrum, entropy_weight, unit_norm  # no
 
 CACHE = HERE / "out" / "cache"
 LIB_COLUMNS = ["ms2_mzs", "ms2_normalized_intensities", "precursor_mz"]
-INFO_COLUMNS = ["adduct", "ionization_mode", "instrument_type"]
+# Per-spectrum info read from the train parquet. Stage 2 needs the precursor
+# (neutral losses), the collision energy (the ce-gap feature) and the source
+# library (the "well-known compound" prior). The list is part of the library
+# cache tag, so extending it invalidates old caches once.
+INFO_COLUMNS = ["adduct", "ionization_mode", "instrument_type", "precursor_mz",
+                "collision_energy_ev", "ingest_lib"]
+
+
+def ce_mean(v) -> float:
+    """Scalar collision energy of a row: mean of the merged CE list (nan if none)."""
+    try:
+        a = np.asarray(v, dtype=float)
+    except (TypeError, ValueError):
+        return float("nan")
+    return float(a.mean()) if a.size else float("nan")
 
 
 # --------------------------------------------------------------- candidates
@@ -113,6 +127,18 @@ class Library:
         mol = self.table["mol"].to_numpy()
         self.mol = mol
         self.positive = (self.table["ionization_mode"] == "positive").to_numpy()
+        self.adduct = self.table["adduct"].to_numpy()
+        self.tims = (self.table["instrument_type"] == common.TIMS).to_numpy()
+        self.prec = self.table["precursor_mz"].to_numpy(dtype=float) \
+            if "precursor_mz" in self.table else np.full(len(self.table), np.nan)
+        self.ce = np.array([ce_mean(v) for v in self.table["collision_energy_ev"]]) \
+            if "collision_energy_ev" in self.table else np.full(len(self.table), np.nan)
+        self.ingest = self.table["ingest_lib"].to_numpy() \
+            if "ingest_lib" in self.table else np.full(len(self.table), np.nan)
+        # neutral-loss m/z per peak (precursor - fragment); peak order follows
+        # mz, and the matching functions only require the *query* to be sorted.
+        # A missing precursor propagates nan (matches nothing).
+        self.nlmz = self.prec[self.spec] - self.mz
         self._mols, first = np.unique(mol, return_index=True)
         self._first = np.r_[first, len(mol)]
 
@@ -137,7 +163,8 @@ class Library:
 def _cache_tag(split_info: dict, rows: np.ndarray, params: CleanParams) -> str:
     h = hashlib.sha256()
     h.update(json.dumps({"split": split_info.get("content_hash"), "cache": split_info.get("cache_hash"),
-                         "params": asdict(params)}, sort_keys=True).encode())
+                         "params": asdict(params), "columns": list(INFO_COLUMNS),
+                         "tag_extra": split_info.get("tag_extra")}, sort_keys=True).encode())
     h.update(np.ascontiguousarray(rows, dtype=np.int64).tobytes())
     return h.hexdigest()[:16]
 
@@ -161,8 +188,10 @@ def build_library(rows: np.ndarray, row_key: np.ndarray, train_path: Path, param
     rg = np.searchsorted(bounds, rows, side="right") - 1
     tasks = [(str(train_path), int(g), rows[rg == g] - bounds[g], params) for g in np.unique(rg)]
     workers = workers or max(1, (os.cpu_count() or 2) - 2)
+    # each task materializes one *full* parquet row group before taking its subset,
+    # so cap the concurrent readers to bound the transient memory spike
     mzs, ps, lens = [], [], []
-    with Pool(min(workers, len(tasks))) as pool:
+    with Pool(min(workers, len(tasks), 8)) as pool:
         prog = common.Progress("[library] row groups", len(tasks))
         for m, p, n in pool.imap(_clean_row_group, tasks):
             mzs.append(m)
@@ -174,10 +203,17 @@ def build_library(rows: np.ndarray, row_key: np.ndarray, train_path: Path, param
     table = pd.DataFrame({"row_id": rows, "mol": row_key[rows].astype(np.int64),
                           "adduct": info["adduct"].to_numpy(),
                           "ionization_mode": info["ionization_mode"].to_numpy(),
-                          "instrument_type": info["instrument_type"].to_numpy()})
+                          "instrument_type": info["instrument_type"].to_numpy(),
+                          "precursor_mz": info["precursor_mz"].to_numpy(dtype=float),
+                          "collision_energy_ev": [list(v) if v is not None else None
+                                                  for v in info["collision_energy_ev"]],
+                          "ingest_lib": info["ingest_lib"].to_numpy()})
     mz, p, lens = np.concatenate(mzs), np.concatenate(ps), np.concatenate(lens)
-    table.to_parquet(tab_path)
-    np.savez(arr_path, mz=mz, p=p, lens=lens)
+    tmp_tab, tmp_arr = CACHE / f"{tag}.tmp.parquet", CACHE / f"{tag}.tmp.npz"
+    table.to_parquet(tmp_tab)
+    np.savez(tmp_arr, mz=mz, p=p, lens=lens)
+    os.replace(tmp_tab, tab_path)    # atomic publish: a crash mid-write can never leave
+    os.replace(tmp_arr, arr_path)    # a half-written cache that the next run would load
     common.log(f"[library] {len(rows):,} spectra, {len(mz):,} peaks after cleaning "
                f"({(lens == 0).sum():,} empty) in {time.time() - t0:.0f}s")
     return Library(table, mz, p, lens)

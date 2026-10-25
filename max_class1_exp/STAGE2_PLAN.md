@@ -36,15 +36,27 @@ Stage 2 is a **learned re-ranker** over stage-1 shortlists:
 
 **Training data** is generated **on the fly, in memory, from the regular train
 dataset**, never from a file. The 1000 eval molecules of the evaluation split
-are **completely excluded** from training. The evaluation split is then used
-once, untouched, as a clean final test — no cross-validation needed.
+are never *training queries* — the model is never told the answer for a
+molecule it will be evaluated on, and their split-hidden rows are invisible to
+training. They do appear in the roles they also play at evaluation time: as
+mass-window decoys (label 0) and as library content through their visible
+rows. The evaluation split is then used once, untouched, as a clean final
+test — no cross-validation needed.
 
 ### Hard rules (leakage and correctness guards)
 
-- R1. Every molecule whose `key` appears in the evaluation split's `truth.key`
-  is excluded from the training pool entirely (not just its spectra — the
-  molecule must not appear as a training query, a training truth, or
-  deliberately sampled). Assert this at runtime.
+- R1. The model must never be *told the answer* for an eval molecule, and
+  training must never see a split-hidden row. Concretely:
+  (a) no molecule whose `key` appears in the evaluation split's `truth.key`
+  may be a training query — i.e. no positive training label may be an eval
+  molecule (assert: eval molecule indices ∩ training-query molecule indices
+  = ∅); (b) the training visibility mask starts from `split.train_mask`, so
+  every row the eval split hides (`hidden_row_ids`, including the eval rows)
+  is invisible to training as well (assert: all training library rows satisfy
+  `split.train_mask`). Eval molecules MAY appear in training only in the
+  roles they play at evaluation time: as decoy candidates (label 0) and via
+  their visible rows in the library. Library overlap is the task itself —
+  what is forbidden is the *label*, not the molecule.
 - R2. Every training example must hold out the query's setting from the
   library: the rows chosen as pseudo-query for molecule m must NOT be in the
   training library for that example (assert), and the truth must be reachable
@@ -215,7 +227,7 @@ uv run python max_class1_exp/stage2.py \
     [--n-train 3000] [--train-mix instrument=0.4,adduct=0.3,ce=0.3] \
     [--train-seed 2027] [--model both] \
     [--limit N] [--workers N] [--no-cache] \
-    [--leak-train] \
+    [--leak-train] [--train-on-eval] \
     [--out-dir max_class1_exp/out]
 ```
 
@@ -226,6 +238,16 @@ uv run python max_class1_exp/stage2.py \
   evaluate on them. Expected MRR ~1 for the training molecules' own
   shortlists — proves the wiring (features → labels → fit → predict → rank)
   is correct. Never use for real numbers.
+- `--train-on-eval` (diagnostic, NOT the headline): relaxes only the label
+  half of R1 — training queries are drawn from the eval molecules too
+  (each with a held-out setting *different* from the eval's hidden rows; the
+  split-hidden rows still never appear). Its purpose is to *measure* the
+  leakage dispute: run the clean training and this mode with the same
+  `--train-seed`, and report the metric delta (leaked − clean) per change
+  type in the log. The delta is the memorization effect; if it is ~0, the
+  label rule is demonstrably harmless; if it is positive, it is the exact
+  number the clean default protects against. Headline numbers must always
+  come from the clean training.
 - `--limit`: only the first N *eval* molecules (same semantics as stage 1).
 
 ### 4.1 Phase 1: build training shortlists on the fly
@@ -251,11 +273,13 @@ uv run python max_class1_exp/stage2.py \
        # precursor_mz, adduct, ionization_mode, instrument_type,
        # collision_energy) and clean each with clean_spectrum;
        # keep the query's adduct/instrument/ce per spectrum for the flags.
-5. training visibility mask: boolean array over all train rows, True
-   everywhere except the union of hidden rows (rows - visible_rows) over all
-   sampled molecules. This mirrors the eval setup, where each eval molecule's
-   non-visible rows are globally hidden. NOTE: hidden rows of OTHER sampled
-   molecules must also be hidden — build the union before featurizing.
+5. training visibility mask: start from `split.train_mask` (the eval split
+   already hides the eval molecules' hidden rows, so eval molecules keep
+   exactly their eval-visible rows and can legitimately appear as decoys and
+   library content, R1), then additionally hide the union of held-out query
+   rows over all sampled training molecules. This mirrors the eval setup:
+   each training query is reachable only through its other settings. Build
+   the union before featurizing.
 6. cidx = CandidateIndex(molecules, row_key, training_mask)
    candidates = cidx.window(query_mass, ppm)      # same as stage 1
    assert truth m is among candidates; if not (mass edge case), drop the
@@ -265,7 +289,8 @@ uv run python max_class1_exp/stage2.py \
    build_library(...) with a split_info dict that embeds the training-seed and
    "stage2-train" marker in the cache tag. Because shortlists overlap, build
    ONE library for the union of all training molecules' candidate rows.
-   Assert (R2): no query row of any sampled molecule is in the library rows.
+   Assert (R2): no query row of any sampled molecule is in the library rows;
+   and (R1): all library rows satisfy split.train_mask (no split-hidden row).
 ```
 
 Determinism note: sampling must consume the rng in a fixed order (per change
@@ -419,8 +444,10 @@ where losses concentrate.
 
 - **Do not train on the eval split and report metrics on it without
   `--leak-train`.** The molecules may share spectra with the library (that is
-  the task — class 1), but the model must never be *told the answer* for a
-  molecule it is later evaluated on.
+  the task — class 1), and eval molecules may appear in training as label-0
+  decoys and via their visible rows, but the model must never be *told the
+  answer* (positive label) for a molecule it is later evaluated on, and must
+  never see a split-hidden row.
 - **Do not build training examples without holding out the query setting.**
   Same-setting examples are easy and teach the model the wrong conditional
   ("trust entropy blindly"), which miscalibrates exactly the cross-setting

@@ -184,6 +184,57 @@ def cosine_similarity(mz_a, p_a, mz_b, p_b, tol: float) -> float:
                                     np.zeros(len(mz_b), dtype=np.int64), 1, tol)[0])
 
 
+def neutral_losses(mz, precursor_mz: float) -> tuple[np.ndarray, np.ndarray]:
+    """Neutral losses of a cleaned spectrum: nl = precursor_mz - mz (always
+    positive, since cleaning keeps mz <= precursor - margin).
+
+    Returns (nl sorted ascending, order); apply `order` to the intensity
+    array (p[order]) to keep peak/intensity pairs aligned. Matching in
+    neutral-loss space is algebraically identical to matching library peaks
+    shifted by the precursor difference (the "modified cosine").
+    """
+    mz = np.asarray(mz, dtype=np.float64)
+    nl = precursor_mz - mz
+    order = np.argsort(nl, kind="stable")
+    return nl[order], order
+
+
+def nl_entropy_similarity(mz_a, p_a, prec_a, mz_b, p_b, prec_b, tol: float,
+                          weighted: bool = True) -> float:
+    """Entropy similarity in neutral-loss space (inputs: cleaned spectra summing to 1)."""
+    nl_a, oa = neutral_losses(mz_a, prec_a)
+    nl_b, ob = neutral_losses(mz_b, prec_b)
+    return entropy_similarity(nl_a, p_a[oa], nl_b, p_b[ob], tol, weighted=weighted)
+
+
+def nl_cosine_similarity(mz_a, p_a, prec_a, mz_b, p_b, prec_b, tol: float) -> float:
+    """Cosine similarity in neutral-loss space (inputs: cleaned spectra summing to 1)."""
+    nl_a, oa = neutral_losses(mz_a, prec_a)
+    nl_b, ob = neutral_losses(mz_b, prec_b)
+    return cosine_similarity(nl_a, p_a[oa], nl_b, p_b[ob], tol)
+
+
+def match_stats(q_mz, q_p, l_mz, l_p, tol: float) -> tuple[int, float]:
+    """(matched peak count, matched query intensity share) of one query
+    spectrum against ONE library spectrum.
+
+    q_p must sum to 1 (a cleaned spectrum). Each query peak is counted at
+    most once; when several library peaks fall within tol of one query peak,
+    the most intense partner wins (the one-to-one convention of the
+    similarity functions).
+    """
+    q_mz = np.asarray(q_mz, dtype=np.float64)
+    q_p = np.asarray(q_p, dtype=np.float64)
+    l_idx, q_idx = _match(q_mz, np.asarray(l_mz, dtype=np.float64), tol)
+    if len(l_idx) == 0:
+        return 0, 0.0
+    key = q_idx.astype(np.int64)
+    order = np.lexsort((-np.asarray(l_p, dtype=np.float64)[l_idx], key))
+    first = np.r_[True, key[order][1:] != key[order][:-1]]
+    qs = q_idx[order[first]]
+    return len(qs), float(q_p[qs].sum())
+
+
 def merge_spectra(spectra: list[tuple[np.ndarray, np.ndarray]], tol: float) -> tuple[np.ndarray, np.ndarray]:
     """Composite spectrum: average of cleaned spectra (each sums to 1),
     re-centroided within tol, normalised to sum 1."""
