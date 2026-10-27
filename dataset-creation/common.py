@@ -15,7 +15,7 @@ import json
 import os
 import sys
 import time
-from multiprocessing import Pool
+from multiprocessing import Pool, get_context
 from pathlib import Path
 
 import numpy as np
@@ -374,13 +374,14 @@ class Similarity:
         _SIM_COLS = np.ascontiguousarray(fps.T)
         _SIM_CNT = np.bitwise_count(fps).sum(axis=1, dtype=np.int32)
         self.workers = workers or max(1, (os.cpu_count() or 2) - 2)
+        self.ctx = get_context("fork")
 
     def neighbours(self, queries, tc: float) -> list[np.ndarray]:
         """Molecule indices with Tanimoto >= tc to each query (query included)."""
         queries = list(queries)
         if not queries:
             return []
-        with Pool(min(self.workers, len(queries))) as pool:
+        with self.ctx.Pool(min(self.workers, len(queries))) as pool:
             return pool_map(pool, _neighbours_of, [(int(q), tc) for q in queries],
                             f"[similarity] neighbourhoods (Tc >= {tc:g})", chunksize=4)
 
@@ -389,7 +390,7 @@ class Similarity:
         queries = list(queries)
         if not queries:
             return np.empty(0, dtype=np.int64)
-        with Pool(min(self.workers, len(queries))) as pool:
+        with self.ctx.Pool(min(self.workers, len(queries))) as pool:
             return np.array(pool_map(pool, _count_of, [(int(q), tc) for q in queries],
                                      f"[neighbours] molecules (Tc >= {tc:g})", chunksize=256), dtype=np.int64)
 
@@ -405,7 +406,7 @@ class Similarity:
         queries = list(queries)
         if not queries:
             return []
-        with Pool(min(self.workers, len(queries))) as pool:
+        with self.ctx.Pool(min(self.workers, len(queries))) as pool:
             return pool_map(pool, _max_tc, [(int(q), visible) for q in queries],
                             "[similarity] nearest visible molecule", chunksize=8)
 
