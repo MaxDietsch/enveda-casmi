@@ -8,14 +8,15 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
 from torch import nn
-import torch.nn.functional as F
 from tokenizers import Tokenizer, models, trainers, processors
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from enveda_casmi26 import tracking
 from enveda_casmi26.fp_model import DeNovoModel
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -125,7 +126,7 @@ def canonical(smiles):
 
 
 # ---------------------------------------------------------------- train
-def main():
+def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--spectra", type=int, default=500_000)
     ap.add_argument("--epochs", type=int, default=2)
@@ -141,7 +142,11 @@ def main():
     ap.add_argument("--out", default="models/denovo_v1.pt")
     ap.add_argument("--resume", default=None)
     ap.add_argument("--seed", type=int, default=0)
-    args = ap.parse_args()
+    tracking.add_arguments(ap)
+    return ap.parse_args()
+
+
+def run(args, tracker):
     torch.manual_seed(args.seed)
 
     t0 = time.time()
@@ -161,12 +166,19 @@ def main():
     val_smiles = val_df.normalized_smiles.values
     val_keys = val_df.inchikey14.values
     print(f"data ready at {time.time() - t0:.0f}s")
+    tracker.log_params({
+        "data_train_spectra": len(train_mz),
+        "data_train_structures": int(train_df.inchikey14.nunique()),
+        "data_val_spectra": len(val_mz),
+        "data_val_structures": int(val_df.inchikey14.nunique()),
+    })
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = DeNovoModel(args.embed_dim, args.n_layers, args.n_heads, args.ff_dim,
                         vocab_size=args.vocab_size).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model: {n_params / 1e6:.1f}M params on {device}")
+    tracker.log_params({"model_n_params": n_params, "device": str(device)})
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     base_step = 0
     if args.resume and os.path.exists(args.resume):
@@ -177,6 +189,7 @@ def main():
         base_step = ckpt.get("step", 0)
         print(f"resumed from {args.resume} at step {base_step} "
               f"(val_exact_hit {ckpt.get('val_exact_hit', '?')})")
+        tracker.log_params({"resumed_from": args.resume, "resume_step": base_step})
     scaler_dtype = torch.bfloat16
 
     steps_per_epoch = max(1, len(train_mz) // (args.batch_size * args.grad_accum))
@@ -185,6 +198,7 @@ def main():
     best_metric = -1.0
     step = base_step
     last_path = args.out + ".last.pt"
+    config = tracking.public_args(args)
     for epoch in range(args.epochs):
         order = np.random.RandomState(args.seed + epoch + 1000 * base_step).permutation(len(train_mz))
         for g in range(0, len(order), args.batch_size):
@@ -204,8 +218,10 @@ def main():
                 if step % 500 == 0:
                     torch.save({"state_dict": model.state_dict(),
                                 "optimizer": opt.state_dict(),
-                                "config": vars(args), "step": step}, last_path)
+                                "config": config, "step": step}, last_path)
                 if step % 100 == 0:
+                    tracker.log_metrics(
+                        {"train/loss": loss.item() * args.grad_accum}, step=step)
                     print(f"ep {epoch} step {step}/{total_steps} "
                           f"loss {loss.item() * args.grad_accum:.4f} "
                           f"({time.time() - t0:.0f}s)", flush=True)
@@ -216,18 +232,21 @@ def main():
                                                     val_tokens[:64], 0)
                         memory = model.encode(vm.to(device), vi.to(device), vk.to(device))
                         vloss = model.loss(vt.to(device), memory, vk.to(device)).item()
+                    tracker.log_metrics({"val/loss": vloss}, step=step)
                     print(f"  val loss {vloss:.4f}", flush=True)
                     model.train()
                 if step % 1500 == 0:
                     model.eval()
                     hits, valid, tani = gen_metrics(
                         model, tok, device, val_mz, val_int, val_prec, val_smiles, val_keys)
+                    tracker.log_metrics({"val/exact_hit": hits, "val/validity": valid,
+                                         "val/tanimoto": tani}, step=step)
                     print(f"  GEN: exact {hits:.3f} valid {valid:.3f} tanimoto {tani:.3f}", flush=True)
                     if hits > best_metric:
                         best_metric = hits
                         torch.save({
                             "state_dict": model.state_dict(),
-                            "config": vars(args),
+                            "config": config,
                             "val_exact_hit": hits,
                         }, args.out)
                         print(f"  saved -> {args.out}", flush=True)
@@ -237,9 +256,22 @@ def main():
         model, tok, device, val_mz, val_int, val_prec, val_smiles, val_keys)
     print(f"FINAL GEN: exact {hits:.3f} valid {valid:.3f} tanimoto {tani:.3f}")
     if hits > best_metric:
-        torch.save({"state_dict": model.state_dict(), "config": vars(args),
+        torch.save({"state_dict": model.state_dict(), "config": config,
                     "val_exact_hit": hits}, args.out)
         print(f"saved -> {args.out}")
+        best_metric = hits
+    tracker.log_metrics({"final/exact_hit": hits, "final/validity": valid,
+                         "final/tanimoto": tani, "final/best_exact_hit": best_metric})
+    tracker.log_artifact(args.out)
+    tracker.log_artifact("models/denovo_tokenizer.json")
+
+
+def main():
+    args = parse_args()
+    with tracking.session(args, run_name=f"denovo-{Path(args.out).stem}",
+                           tags={"script": "scripts/train_denovo.py",
+                                 "model": "denovo"}) as tracker:
+        run(args, tracker)
 
 
 def gen_metrics(model, tok, device, val_mz, val_int, val_prec, val_smiles, val_keys, n=64):

@@ -7,6 +7,7 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -14,6 +15,7 @@ import torch
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from enveda_casmi26 import tracking
 from scripts.train_denovo import (DeNovoModel, make_batch, decode_ids, canonical)
 
 
@@ -37,6 +39,7 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--retrieval", default="benchmark/validate_results.csv")
     ap.add_argument("--out", default="benchmark/denovo_eval.csv")
+    tracking.add_arguments(ap)
     args = ap.parse_args()
 
     from tokenizers import Tokenizer
@@ -131,6 +134,22 @@ def main():
             both = m[(m.hit == 1) & (m.any_hit == 1)]
             print(f"both channels hit: {len(both)}/{len(m)}")
             m.to_csv(args.out.replace(".csv", "_joined.csv"), index=False)
+
+    artifacts = [args.out]
+    joined = args.out.replace(".csv", "_joined.csv")
+    if os.path.exists(joined):
+        artifacts.append(joined)
+    tracking.log_run(
+        args,
+        params={"n_molecules": len(mol_ids), "samples_per_spectrum": args.samples},
+        metrics={"eval/validity": float(out.n_valid.sum() / max(1, out.n_generated.sum())),
+                 "eval/top1_exact": float(out.top1_hit.mean()),
+                 "eval/any_hit": float(out.any_hit.mean()),
+                 "eval/n_molecules": len(out)},
+        artifacts=artifacts,
+        run_name=f"denovo-eval-{Path(args.ckpt).stem}",
+        tags={"script": "scripts/eval_denovo.py", "stage": "eval"},
+    )
 
 
 if __name__ == "__main__":

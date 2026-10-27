@@ -38,6 +38,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from library import CandidateIndex, build_library, query_mass  # noqa: E402
+from enveda_casmi26 import tracking  # noqa: E402
 import common  # noqa: E402  (dataset-creation, put on sys.path by library)
 from dataloader import load_split  # noqa: E402
 from spectra import (CleanParams, clean_spectrum, cosine_one_vs_many, entropy_one_vs_many,  # noqa: E402
@@ -132,6 +133,7 @@ def main() -> None:
     parser.add_argument("--leak-eval", action="store_true",
                         help="self-test: add the eval spectra to the library; MRR must be ~1")
     parser.add_argument("--out-dir", type=Path, default=HERE / "out")
+    tracking.add_arguments(parser)
     args = parser.parse_args()
     t_start = time.time()
     _PARAMS = CleanParams(tol=args.tol, noise=args.noise)
@@ -235,7 +237,8 @@ def main() -> None:
                        "top25": round(float(((rk >= 1) & (rk <= 25)).mean()), 4)}
         return d
 
-    metrics = {"split": str(args.split), "params": {k: str(v) for k, v in vars(args).items()},
+    metrics = {"split": str(args.split),
+               "params": {k: str(v) for k, v in tracking.public_args(args).items()},
                "overall": summary(res),
                "by_change": {c: summary(g) for c, g in res.groupby(res["change"].fillna("none"))},
                "library_spectra": len(_LIB), "seconds": {"scoring": round(t_score, 1),
@@ -258,6 +261,15 @@ def main() -> None:
             f"{m[meth]['mrr@25']:>10.3f} ({m[meth]['top1']:.2f}/{m[meth]['top10']:.2f})" for _, m in groups))
     common.log(f"\n[stage1] scoring {t_score:.0f}s, total {time.time() - t_start:.0f}s; "
                f"results in {args.out_dir}/{stem}_stage1_*.")
+    tracking.log_run(
+        args,
+        params={"n_molecules": len(res), "n_library_spectra": len(_LIB)},
+        metrics=metrics,
+        artifacts=[args.out_dir / f"{stem}_stage1_results.parquet",
+                   args.out_dir / f"{stem}_stage1_metrics.json"],
+        run_name=f"stage1-{stem}",
+        tags={"script": "max_class1_exp/stage1.py", "stage": "stage1"},
+    )
 
 
 if __name__ == "__main__":

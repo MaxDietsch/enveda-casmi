@@ -22,3 +22,26 @@ python scripts/download_data.py
 You will need Kaggle API credentials (`~/.kaggle/kaggle.json`) for the download to work.
 Other derived datasets (`coconut_pool.parquet`, FP caches, etc.) are produced by the
 scripts in `scripts/` (e.g. `build_coconut_pool.py`).
+
+## Experiment tracking
+
+Training and evaluation scripts log parameters, metrics, and model artifacts to
+[MLflow](https://mlflow.org/). Runs are stored locally in `mlflow.db` by default:
+
+```bash
+uv run python scripts/train_denovo.py
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+For a shared/remote server, copy the template to the gitignored `mlflow.env`
+and fill in your server URI and token:
+
+```bash
+cp mlflow.env.example mlflow.env
+```
+
+`MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` are supported for basic
+auth. Environment variables override `mlflow.env`; explicit
+`--mlflow-tracking-uri`/`--mlflow-tracking-token` flags override both. Use
+`--mlflow-config PATH` for a file elsewhere, `--mlflow-experiment` and
+`--mlflow-run-name` to organize runs, or `--no-mlflow` to disable tracking.

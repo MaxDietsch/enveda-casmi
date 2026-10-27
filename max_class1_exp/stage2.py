@@ -49,6 +49,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from library import CandidateIndex, build_library, query_mass  # noqa: E402
+from enveda_casmi26 import tracking  # noqa: E402
 import common  # noqa: E402  (dataset-creation, put on sys.path by library)
 import make_difficulty1  # noqa: E402
 from dataloader import clean_peaks, load_split, read_rows  # noqa: E402
@@ -427,6 +428,7 @@ def main() -> None:
                         help="eligibility ppm for the training sampler (as in make_difficulty1.py)")
     parser.add_argument("--rebuild-cache", action="store_true", help="recompute the dataset key cache")
     parser.add_argument("--out-dir", type=Path, default=HERE / "out")
+    tracking.add_arguments(parser)
     args = parser.parse_args()
     if args.model_path and (args.leak_train or args.train_on_eval):
         parser.error("--model-path cannot be combined with --leak-train or --train-on-eval")
@@ -690,7 +692,8 @@ def main() -> None:
                        "top25": round(float(((rk >= 1) & (rk <= 25)).mean()), 4)}
         return d
 
-    metrics = {"split": str(args.split), "params": {k: str(v) for k, v in vars(args).items()},
+    metrics = {"split": str(args.split),
+               "params": {k: str(v) for k, v in tracking.public_args(args).items()},
                "training": training,
                "overall": summary(res),
                "by_change": {c: summary(g) for c, g in res.groupby(res["change"].fillna("none"))},
@@ -745,6 +748,25 @@ def main() -> None:
         else:
             common.log(f"[stage2] no clean-run metrics found at {p.name}; run "
                        f"`stage2.py` with the same --train-seed and --limit for the delta")
+    artifacts = [args.out_dir / f"{stem}_stage2_results.parquet",
+                 args.out_dir / f"{stem}_stage2_metrics.json"]
+    if args.model_path:
+        model_file = Path(args.model_path)
+    elif fitted:
+        model_file = args.out_dir / f"{args.split.stem}_stage2_model.joblib"
+    else:
+        model_file = None
+    if model_file is not None and model_file.exists():
+        artifacts.append(model_file)
+    tracking.log_run(
+        args,
+        params={"n_molecules": len(res), "n_library_spectra": n_lib_eval,
+                "primary_model": str(primary)},
+        metrics=metrics,
+        artifacts=artifacts,
+        run_name=f"stage2-{stem}",
+        tags={"script": "max_class1_exp/stage2.py", "stage": "stage2"},
+    )
 
 
 if __name__ == "__main__":

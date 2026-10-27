@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -19,6 +20,7 @@ from torch import nn
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from enveda_casmi26 import tracking
 from scripts.train_denovo import DeNovoModel, make_batch
 
 
@@ -50,7 +52,7 @@ def embed_spectra(model, device, mz_list, int_list, prec_list, batch=256):
     return np.concatenate(outs)
 
 
-def main():
+def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--encoder", default="models/denovo_v1.pt")
     ap.add_argument("--cache", default="data/fp_embed_cache.npz")
@@ -61,7 +63,11 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--hidden", type=int, default=1024)
     ap.add_argument("--seed", type=int, default=0)
-    args = ap.parse_args()
+    tracking.add_arguments(ap)
+    return ap.parse_args()
+
+
+def run(args, tracker):
     torch.manual_seed(args.seed)
 
     import pandas as pd
@@ -77,8 +83,12 @@ def main():
     model.load_state_dict(ckpt["state_dict"])
     model.eval().to(device)
     print(f"encoder loaded (val_exact_hit={ckpt.get('val_exact_hit')})")
+    tracker.log_params({"encoder_ckpt": args.encoder,
+                        "encoder_val_exact_hit": ckpt.get("val_exact_hit")})
+    tracker.log_dict(cfg, "encoder_config.json")
 
-    if os.path.exists(args.cache):
+    cache_used = os.path.exists(args.cache)
+    if cache_used:
         print("loading embedding cache ...")
         cache = np.load(args.cache, allow_pickle=True)
         x_all = cache["x"]
@@ -159,6 +169,13 @@ def main():
     y_train = y_all[~is_val]
     print(f"train: {len(x_train)} spectra / {len(set(keys_all[~is_val]))} structures")
     print(f"val:   {len(x_val)} spectra ({len(val_keys)} structures)")
+    tracker.log_params({
+        "data_train_spectra": len(x_train),
+        "data_train_structures": len(set(keys_all[~is_val])),
+        "data_val_spectra": len(x_val),
+        "data_val_structures": len(val_keys),
+        "cache_used": cache_used,
+    })
 
     head = nn.Sequential(
         nn.Linear(x_train.shape[1], args.hidden), nn.ReLU(), nn.Dropout(0.2),
@@ -223,6 +240,10 @@ def main():
         top25 = np.mean([w in o[:25] for o, w in zip(order, own_idx)])
         print(f"ep {epoch}: loss {np.mean(losses):.4f} tanimoto {mean_tan:.3f} "
               f"retrieval top1 {top1:.3f} top25 {top25:.3f}", flush=True)
+        tracker.log_metrics({"train/loss": float(np.mean(losses)),
+                             "val/tanimoto": float(mean_tan),
+                             "val/retrieval_top1": float(top1),
+                             "val/retrieval_top25": float(top25)}, step=epoch)
         if top25 > best:
             best = top25
             torch.save({"state_dict": head.state_dict(),
@@ -231,6 +252,16 @@ def main():
                                   "encoder_ckpt": args.encoder}}, args.out)
             print(f"  saved -> {args.out}")
     print(f"done. best val top25 {best:.3f}")
+    tracker.log_metrics({"final/best_retrieval_top25": float(best)})
+    tracker.log_artifact(args.out)
+
+
+def main():
+    args = parse_args()
+    with tracking.session(args, run_name=f"fp-head-{Path(args.out).stem}",
+                          tags={"script": "scripts/train_fp_head.py",
+                                "model": "fp_head"}) as tracker:
+        run(args, tracker)
 
 
 if __name__ == "__main__":

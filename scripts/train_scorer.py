@@ -16,6 +16,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 from sklearn.metrics import roc_auc_score
 
+from enveda_casmi26 import tracking
 from enveda_casmi26.pipeline import ce_bucket
 from enveda_casmi26.scoring import NUMERIC_FEATURES, CandidateScorer, candidate_features
 
@@ -119,7 +120,7 @@ def compute_cand_fps(candidate_keys) -> dict:
     return out
 
 
-def main() -> None:
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--valid-frac", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)
@@ -127,8 +128,11 @@ def main() -> None:
     parser.add_argument("--model-path", default=None)
     parser.add_argument("--drop-ce", action="store_true",
                         help="ablation: exclude CE deviation features from the model")
-    args = parser.parse_args()
+    tracking.add_arguments(parser)
+    return parser.parse_args()
 
+
+def run(args, tracker) -> None:
     if args.drop_ce:
         import enveda_casmi26.scoring as scoring_module
 
@@ -139,6 +143,8 @@ def main() -> None:
 
     print("Loading match dataset ...")
     dataset = pd.read_parquet(DATA_DIR / args.dataset)
+    tracker.log_params({"dataset_rows": len(dataset),
+                        "dataset_spectra": int(dataset["spectrum_id"].nunique())})
     print("Loading spectrum info from cleaned training data ...")
     tc = pd.read_parquet(
         DATA_DIR / "train_clean.parquet",
@@ -169,6 +175,12 @@ def main() -> None:
     print(f"candidate rows: {len(candidates):,} "
           f"({(candidates['is_decoy'] == 0).sum():,} true / {(candidates['is_decoy'] == 1).sum():,} decoy) "
           f"over {candidates['spectrum_id'].nunique()} spectra")
+    tracker.log_params({
+        "n_candidates": len(candidates),
+        "n_true_candidates": int((candidates["is_decoy"] == 0).sum()),
+        "n_decoy_candidates": int((candidates["is_decoy"] == 1).sum()),
+        "n_candidate_spectra": int(candidates["spectrum_id"].nunique()),
+    })
 
     spectra = np.asarray(candidates["spectrum_id"].unique(), dtype=object)
     rng = np.random.default_rng(args.seed)
@@ -180,6 +192,8 @@ def main() -> None:
     valid = candidates[candidates["spectrum_id"].isin(valid_ids)]
     print(f"train: {len(train):,} candidates from {train['spectrum_id'].nunique()} spectra")
     print(f"valid: {len(valid):,} candidates from {valid['spectrum_id'].nunique()} spectra")
+    tracker.log_params({"n_train_spectra": int(train["spectrum_id"].nunique()),
+                        "n_valid_spectra": int(valid["spectrum_id"].nunique())})
 
     def contrasted(frame: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
         xs, ys, ids = [], [], []
@@ -195,7 +209,9 @@ def main() -> None:
     scorer = CandidateScorer()
     scorer.fit(train_x, train_y)
     probs = scorer.score_set(valid_x.to_dict("records"))
-    print(f"\nvalidation ROC-AUC (per candidate, contrasted): {roc_auc_score(valid_y, 1 - probs):.3f}")
+    auc = float(roc_auc_score(valid_y, 1 - probs))
+    tracker.log_params({"model_n_features": len(scorer.columns)})
+    print(f"\nvalidation ROC-AUC (per candidate, contrasted): {auc:.3f}")
 
     valid_x = valid_x.assign(prob=probs, spectrum_id=valid_ids_arr, is_decoy=valid_y)
     top1 = top3 = n_eval = 0
@@ -220,6 +236,13 @@ def main() -> None:
         cov_eval += 1
         cov1 += int((decoy_cov < true_cov.iloc[0]).all())
     print(f"sanity - top-1 by coverage alone: {cov1 / cov_eval:.1%} ({cov_eval} spectra)")
+    tracker.log_metrics({
+        "valid/roc_auc": auc,
+        "valid/top1": top1 / max(1, n_eval),
+        "valid/top3": top3 / max(1, n_eval),
+        "valid/coverage_top1": cov1 / max(1, cov_eval),
+        "valid/n_eval": n_eval,
+    })
 
     model_path = Path(args.model_path) if args.model_path else MODEL_PATH
     scorer.save(model_path)
@@ -228,6 +251,18 @@ def main() -> None:
     coef = pd.Series(scorer.model.coef_[0], index=scorer.columns)
     print("\nlearned within-spectrum effects (log-odds):")
     print(coef[NUMERIC_FEATURES].sort_values(key=lambda s: s.abs(), ascending=False).round(3).to_string())
+    tracker.log_artifact(model_path)
+    tracker.log_dict({"features": list(scorer.columns),
+                      "coefficients": {k: float(v) for k, v in coef.items()}},
+                     "scorer_coefficients.json")
+
+
+def main() -> None:
+    args = parse_args()
+    with tracking.session(args, run_name=f"scorer-{Path(args.dataset).stem}",
+                          tags={"script": "scripts/train_scorer.py",
+                                "model": "candidate_scorer"}) as tracker:
+        run(args, tracker)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 # Download latest version directly into the project data folder
 path = kagglehub.competition_download(
     "enveda-CASMI26-molecule-id-mass-spectra",
-    path_override=str(DATA_DIR),
+    output_dir=str(DATA_DIR),
 )
 
 print("Path to competition files:", path)

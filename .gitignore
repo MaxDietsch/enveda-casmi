@@ -31,3 +31,8 @@ dataset-creation/out/
 
 # Class-1 experiment outputs and library cache
 max_class1_exp/out/
+
+# MLflow experiment tracking
+mlflow.db*
+mlruns/
+mlflow.env
