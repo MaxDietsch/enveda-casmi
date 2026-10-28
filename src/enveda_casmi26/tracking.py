@@ -15,11 +15,13 @@ precedence over both. ``MLFLOW_TRACKING_USERNAME``/``MLFLOW_TRACKING_PASSWORD``
 are supported for basic auth; S3 artifact stores use boto3 and the standard
 ``AWS_*`` variables. Pass ``--no-mlflow`` to disable tracking for a run. If
 MLflow is not installed or cannot be initialized, the helpers degrade to a
-no-op so training still runs.
+no-op so training still runs; a logging call that fails mid-run (e.g. the
+server is unreachable) prints a warning instead of killing the job.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import numbers
@@ -185,12 +187,24 @@ def _flatten_metrics(metrics: Mapping[str, Any], prefix: str = "") -> dict[str, 
     return flat
 
 
+def _best_effort(method):
+    """Tracking must never kill a run: report a failed MLflow call and carry on."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except Exception as exc:
+            print(f"[mlflow] {method.__name__} failed: {exc}")
+    return wrapper
+
+
 class Tracker:
     """Thin wrapper around the active MLflow run; a no-op when disabled."""
 
     def __init__(self, enabled: bool = False):
         self.enabled = enabled
 
+    @_best_effort
     def log_params(self, params: Mapping[str, Any]) -> None:
         if not self.enabled:
             return
@@ -198,6 +212,7 @@ class Tracker:
 
         mlflow.log_params(_flatten_params(params))
 
+    @_best_effort
     def log_metrics(self, metrics: Mapping[str, Any], step: int | None = None) -> None:
         if not self.enabled:
             return
@@ -208,6 +223,7 @@ class Tracker:
 
         mlflow.log_metrics(flat, step=step)
 
+    @_best_effort
     def log_tags(self, tags: Mapping[str, Any]) -> None:
         if not self.enabled:
             return
@@ -215,6 +231,7 @@ class Tracker:
 
         mlflow.set_tags({_param_name(str(k)): str(v) for k, v in tags.items()})
 
+    @_best_effort
     def log_artifact(self, path: str | os.PathLike, artifact_path: str | None = None) -> None:
         if not self.enabled:
             return
@@ -225,6 +242,7 @@ class Tracker:
 
         mlflow.log_artifact(str(path), artifact_path=artifact_path)
 
+    @_best_effort
     def log_dict(self, payload: Mapping[str, Any], artifact_file: str) -> None:
         if not self.enabled:
             return
@@ -232,6 +250,7 @@ class Tracker:
 
         mlflow.log_dict(dict(payload), artifact_file)
 
+    @_best_effort
     def finish(self, status: str = "FINISHED") -> None:
         if not self.enabled:
             return
@@ -268,10 +287,7 @@ def _start(args, run_name: str | None, tags: Mapping[str, Any] | None) -> Tracke
 
     print(f"[mlflow] run {run.info.run_id} -> {_public_uri(uri)} (experiment: {experiment})")
     tracker = Tracker(enabled=True)
-    try:
-        tracker.log_params(public_args(args))
-    except Exception as exc:
-        print(f"[mlflow] failed to log run parameters: {exc}")
+    tracker.log_params(public_args(args))
     return tracker
 
 

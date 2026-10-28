@@ -419,7 +419,6 @@ def build_training_queries(examples, read_rows_fn, train_path, meta, cidx, ppm, 
 # --------------------------------------------------------------------- main
 
 def main() -> None:
-    global _LIB, _QUERIES, _PARAMS
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--split", type=Path, default=common.OUT / "difficulty1.parquet",
@@ -458,6 +457,16 @@ def main() -> None:
     args = parser.parse_args()
     if args.model_path and (args.leak_train or args.train_on_eval):
         parser.error("--model-path cannot be combined with --leak-train or --train-on-eval")
+    stem = args.split.stem + ("_leak" if args.leak_train else "") \
+        + ("_on_eval" if args.train_on_eval else "") + (f"_limit{args.limit}" if args.limit else "")
+    # the MLflow run is open for the whole job, so it shows up (and fails visibly) right away
+    with tracking.session(args, run_name=f"stage2-{stem}",
+                          tags={"script": "max_class1_exp/stage2.py", "stage": "stage2"}) as tracker:
+        run(args, tracker, stem)
+
+
+def run(args, tracker: tracking.Tracker, stem: str) -> None:
+    global _LIB, _QUERIES, _PARAMS
     t_start = time.time()
     params = CleanParams(tol=args.tol, noise=args.noise)
     workers = args.workers or max(1, (os.cpu_count() or 2) - 2)
@@ -516,7 +525,9 @@ def main() -> None:
                                "[stage2] eval features")
     t_eval_feat = time.time() - t_eval_lib
     n_lib_eval = len(lib_eval)
-    del lib_eval                    # eval features are computed; the library is dead weight below
+    tracker.log_params({"n_molecules": len(truth), "n_library_spectra": n_lib_eval})
+    tracker.log_metrics({"seconds/eval_features": round(t_eval_feat, 1)})
+    del lib_eval                   # eval features are computed; the library is dead weight below
     _LIB = None                     # featurize_queries stashed it globally; drop the last reference
 
     # ---- phase 1-3: training data on the fly, then fit (or load a saved model)
@@ -583,6 +594,7 @@ def main() -> None:
     if not args.model_path:
         common.log(f"[stage2] training set: {len(train_queries)} shortlists, {len(y_all):,} rows, "
                    f"{100 * y_all.mean():.1f}% positive" if len(y_all) else "[stage2] empty training set")
+        tracker.log_metrics({"training": training})
 
     # internal validation: 10% of the training molecules (rng, R5)
     n = len(train_queries)
@@ -734,8 +746,6 @@ def main() -> None:
                "library_spectra": n_lib_eval,
                "seconds": {"eval_features": round(t_eval_feat, 1), "total": round(time.time() - t_start, 1)}}
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    stem = args.split.stem + ("_leak" if args.leak_train else "") \
-        + ("_on_eval" if args.train_on_eval else "") + (f"_limit{args.limit}" if args.limit else "")
     res.to_parquet(args.out_dir / f"{stem}_stage2_results.parquet")
     if feat_rows:
         pd.concat(feat_rows, ignore_index=True).to_parquet(
@@ -792,15 +802,10 @@ def main() -> None:
         model_file = None
     if model_file is not None and model_file.exists():
         artifacts.append(model_file)
-    tracking.log_run(
-        args,
-        params={"n_molecules": len(res), "n_library_spectra": n_lib_eval,
-                "primary_model": str(primary)},
-        metrics=metrics,
-        artifacts=artifacts,
-        run_name=f"stage2-{stem}",
-        tags={"script": "max_class1_exp/stage2.py", "stage": "stage2"},
-    )
+    tracker.log_params({"primary_model": str(primary)})
+    tracker.log_metrics(metrics)
+    for artifact in artifacts:
+        tracker.log_artifact(artifact)
 
 
 if __name__ == "__main__":
