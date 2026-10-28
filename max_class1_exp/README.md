@@ -9,8 +9,10 @@ planned and described below.
 
 The eval data comes from the eval-set simulator: by default
 `dataset-creation/out/difficulty1.parquet` (see `dataset-creation/README.md`).
-Every eval molecule there has `change` = `instrument`, `adduct` or `ce`, and
-only the rows that differ in that dimension stay visible in train.
+Every eval molecule there has `change` = `instrument`, `adduct`, `ce` or
+`mixed` (two or three of them at once), and only the rows that differ in
+those dimensions stay visible in train; stage 2 trains on the same mix and
+also reports metrics `by_n_changes` / `by_dimension` (inferred from the rows).
 
 ---
 
@@ -229,7 +231,7 @@ split is then used once, untouched.
 
 ```
 uv run python max_class1_exp/stage2.py [--split ...] [--ppm 10] [--tol 0.02] [--noise 0.01]
-    [--n-train 3000] [--train-mix instrument=0.4,adduct=0.3,ce=0.3] [--train-seed 2027]
+    [--n-train 3000] [--train-mix instrument=0.3,adduct=0.2,ce=0.2,mixed=0.3] [--train-seed 2027]
     [--model logistic|hgb|both] [--limit N] [--workers N] [--no-cache]
     [--leak-train] [--train-on-eval] [--model-path out/<split>_stage2_model.joblib]
     [--out-dir max_class1_exp/out]
@@ -237,7 +239,7 @@ uv run python max_class1_exp/stage2.py [--split ...] [--ppm 10] [--tol 0.02] [--
 
 | flag | meaning |
 |---|---|
-| `--n-train`, `--train-mix`, `--train-seed` | size, change-type mix and seed of the on-the-fly training set (mix semantics as in `make_difficulty1.py`; quotas filled instrument → adduct → ce, shortfalls logged, never padded) |
+| `--n-train`, `--train-mix`, `--train-seed` | size, change-type mix and seed of the on-the-fly training set (mix semantics as in `make_difficulty1.py`; quotas filled mixed (per combo, `--train-mixed-dims`) → instrument → adduct → ce, shortfalls logged, never padded) |
 | `--model` | which re-ranker to fit; `both` (default) fits logistic and HGB and reports the better one on internal validation as primary (marked `*` in the table) |
 | `--model-path` | **skip training**: load a model saved by a previous run (`out/<split>_stage2_model.joblib`) and only evaluate. Training and evaluation are normally one command; this separates them. The feature list is checked against the model, and any split works (e.g. a split with another seed, or one built later) |
 | `--leak-train` | self-test: train on the eval shortlists with their spectra in the library — MRR(stage2) must be ≈ 1. Never use for real numbers |

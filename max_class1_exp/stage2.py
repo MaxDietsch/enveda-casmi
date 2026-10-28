@@ -9,8 +9,9 @@ probability. No neural network, no deep learning.
 
 Training data is generated on the fly, in memory, from the regular train
 dataset with the simulator building blocks (`make_difficulty1.qualifying` /
-`choose_rows`): for each sampled molecule one setting is held out as the
-pseudo-query, exactly like the eval split does. Leakage rules:
+`choose_rows`): for each sampled molecule one setting (for `mixed`: two or
+three at once) is held out as the pseudo-query, exactly like the eval split
+does. Leakage rules:
 
   R1  no eval molecule is ever a training query (no positive label for a
       molecule the model is evaluated on) and no split-hidden row is ever
@@ -25,7 +26,8 @@ pseudo-query, exactly like the eval split does. Leakage rules:
 Usage (from the repo root):
     uv run python max_class1_exp/stage2.py \
         [--split dataset-creation/out/difficulty1.parquet] [--ppm 10] [--tol 0.02] [--noise 0.01]
-        [--n-train 3000] [--train-mix instrument=0.4,adduct=0.3,ce=0.3] [--train-seed 2027]
+        [--n-train 3000] [--train-mix instrument=0.3,adduct=0.2,ce=0.2,mixed=0.3]
+        [--train-mixed-dims instrument+ce=0.4,...] [--train-seed 2027]
         [--model logistic|hgb|both] [--limit N] [--workers N] [--no-cache]
         [--leak-train] [--train-on-eval] [--out-dir max_class1_exp/out]
 
@@ -57,7 +59,7 @@ from spectra import (CleanParams, clean_spectrum, cosine_one_vs_many, entropy_on
                      entropy_weight, match_stats, merge_spectra, neutral_losses, unit_norm)
 from stage1 import TOP_K, rank_order  # noqa: E402
 
-CHANGES = ("instrument", "adduct", "ce")           # quota fill order (instrument is the rarest)
+CHANGES = make_difficulty1.CHANGES                # quota fill order (rarest first), as in the split
 STAGE1_METHODS = ["cosine_best", "entropy_best", "entropy_composite", "entropy_combined"]
 # feature columns; n_candidates is context only (constant per shortlist) and never a model feature
 FEATURES = ["entropy_best", "entropy_composite", "cosine_best", "nl_entropy_best", "nl_cosine_best",
@@ -298,25 +300,47 @@ def split_hidden_by_mol(split, key_index) -> dict:
     return out
 
 
+def eval_changed_dims(truth, train_mask, row_key, key_index, train_path) -> list[list[str]]:
+    """Per eval molecule, the dims in which every (eval, visible) pair differs
+    (stratification only, R3)."""
+    meta = common.load_meta(train_path)
+    cols = {"is_tims": (meta["instrument_type"] == common.TIMS).to_numpy(),
+            "adduct": meta["adduct"].to_numpy(), "ce": meta["ce"].to_numpy()}
+    del meta
+    order = np.argsort(row_key, kind="stable")
+    start = np.searchsorted(row_key[order], np.arange(row_key.max() + 2))
+    out = []
+    for r in truth.itertuples():
+        m = int(key_index[r.key])
+        rows = order[start[m]:start[m + 1]]
+        out.append(make_difficulty1.changed_dims(cols, np.asarray(r.eval_row_ids, dtype=np.int64),
+                                                 rows[train_mask[rows]]))
+    return out
+
+
 def sample_training_examples(n_train: int, train_mix: str, train_on_eval: bool, rng, meta, order,
-                             start, eval_mols: set, hidden_by_split: dict):
+                             start, eval_mols: set, hidden_by_split: dict,
+                             mixed_dims: str = make_difficulty1.DEFAULT_MIXED_DIMS):
     """Sampled pseudo-queries (R1, R2, R5): molecules, change types, held-out
     query rows and the rows that stay visible. Deterministic for one seed
-    (fixed change order, sorted pools, rng consumed in sampling order)."""
+    (fixed change order, sorted pools, rng consumed in sampling order).
+    `mixed` uses the split's per-combo slots and (combo, adduct) feasibility."""
     qual = make_difficulty1.qualifying(meta)
     meta_cols = {c: meta[c].to_numpy() for c in ("eligible", "is_tims", "adduct", "ce")}
     mix = common.parse_mix(train_mix, CHANGES)
-    quotas = dict(zip(CHANGES, common.split_counts(n_train, [mix.get(c, 0.0) for c in CHANGES])))
+    weights = common.parse_mix(mixed_dims, make_difficulty1.MIXED_COMBOS)
+    names = [c for c in CHANGES if c != "mixed" or mix.get(c, 0.0) > 0]
+    quotas = dict(zip(names, common.split_counts(n_train, [mix.get(c, 0.0) for c in names])))
     common.log(f"[stage2] training quotas {quotas} from mix {train_mix}")
     examples, shortfall = [], {}
-    for change in CHANGES:
-        pool = sorted(set(qual[change]) - (set() if train_on_eval else eval_mols))
+    for change, label, quota, options in make_difficulty1.change_slots(qual, quotas, weights):
+        pool = sorted(set(options) - (set() if train_on_eval else eval_mols))
         perm = rng.permutation(len(pool))
-        picked = [pool[i] for i in perm[: quotas[change]]]
-        shortfall[change] = max(0, quotas[change] - len(picked))
+        picked = [pool[i] for i in perm[:quota]]
+        shortfall[label] = max(0, quota - len(picked))
         for m in picked:
             rows = order[start[m]:start[m + 1]]
-            q_rows, visible = make_difficulty1.choose_rows(rng, meta_cols, rows, change, qual[change][m])
+            q_rows, visible = make_difficulty1.choose_rows(rng, meta_cols, rows, change, options[m], weights)
             if len(q_rows) == 0:
                 shortfall["empty_query"] = shortfall.get("empty_query", 0) + 1
                 continue
@@ -404,8 +428,10 @@ def main() -> None:
     parser.add_argument("--tol", type=float, default=0.02, help="m/z tolerance for peaks (Da)")
     parser.add_argument("--noise", type=float, default=0.01, help="drop peaks below this share of the base peak")
     parser.add_argument("--n-train", type=int, default=3000, help="number of training molecules")
-    parser.add_argument("--train-mix", default="instrument=0.4,adduct=0.3,ce=0.3",
-                        help="share of training molecules per change type")
+    parser.add_argument("--train-mix", default=make_difficulty1.DEFAULT_CHANGE_MIX,
+                        help="share of training molecules per change type (instrument, adduct, ce, mixed)")
+    parser.add_argument("--train-mixed-dims", default=make_difficulty1.DEFAULT_MIXED_DIMS,
+                        help="mixed training molecules: weight per combo of held-out dims")
     parser.add_argument("--train-seed", type=int, default=2027, help="seed of the training sampler")
     parser.add_argument("--model", choices=("logistic", "hgb", "both"), default="both",
                         help="which re-ranker to fit (both: the better one on internal validation is primary)")
@@ -511,7 +537,8 @@ def main() -> None:
         rng = np.random.default_rng(args.train_seed)
         examples, shortfall = sample_training_examples(
             args.n_train, args.train_mix, args.train_on_eval, rng, meta, order, start,
-            eval_mols, split_hidden_by_mol(split, key_index) if args.train_on_eval else {})
+            eval_mols, split_hidden_by_mol(split, key_index) if args.train_on_eval else {},
+            args.train_mixed_dims)
         mask = training_mask(split, examples)
         cidx_train = CandidateIndex(molecules, row_key, mask)
         train_queries, dropped = build_training_queries(
@@ -532,6 +559,7 @@ def main() -> None:
                                   {**info, "tag_extra": {"stage2": "train", "seed": args.train_seed,
                                                          "n_train": args.n_train,
                                                          "mix": args.train_mix,
+                                                         "mixed_dims": args.train_mixed_dims,
                                                          "train_on_eval": bool(args.train_on_eval)}},
                                   workers, use_cache=not args.no_cache)
         t0 = time.time()
@@ -641,10 +669,12 @@ def main() -> None:
     def stage2_scores(name, X, q):
         return predict(models[name], X, [len(q["cands"])]) if len(q["cands"]) else np.empty(0)
 
+    dims_eval = eval_changed_dims(truth, split.train_mask, row_key, key_index, split.train_path)
     rows, feat_rows = [], []
-    for r, q, X in zip(truth.itertuples(), queries_eval, X_eval):
+    for r, q, X, dims in zip(truth.itertuples(), queries_eval, X_eval, dims_eval):
         t = int(key_index[r.key])
         rec = {"molecule_id": r.molecule_id, "key": r.key, "change": r.change,
+               "changed_dims": "+".join(dims), "n_changes": len(dims),
                "difficulty": int(r.difficulty), "n_eval_spectra": len(q["spectra"]),
                "n_candidates": len(q["cands"]), "truth_in_candidates": bool((q["cands"] == t).any()),
                "query_mass": q.get("mass", np.nan)}
@@ -697,6 +727,10 @@ def main() -> None:
                "training": training,
                "overall": summary(res),
                "by_change": {c: summary(g) for c, g in res.groupby(res["change"].fillna("none"))},
+               # inferred from the rows: dims in which every eval/visible pair differs
+               "by_n_changes": {str(k): summary(g) for k, g in res.groupby("n_changes")},
+               "by_dimension": {d: summary(g) for d in make_difficulty1.DIMS
+                                if len(g := res[res["changed_dims"].str.split("+").apply(lambda x: d in x)])},
                "library_spectra": n_lib_eval,
                "seconds": {"eval_features": round(t_eval_feat, 1), "total": round(time.time() - t_start, 1)}}
     args.out_dir.mkdir(parents=True, exist_ok=True)

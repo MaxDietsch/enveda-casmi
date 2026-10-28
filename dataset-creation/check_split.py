@@ -1,7 +1,8 @@
 """Validate an eval-set file produced by the make_*.py scripts.
 
 Checks that no eval spectrum or hidden molecule leaks into the visible train
-rows, that neighbour-removed molecules have no similar visible molecule, that difficulty-1 molecules differ in the declared dimension, that the
+rows, that neighbour-removed molecules have no similar visible molecule, that difficulty-1 molecules differ in the declared dimension
+(`mixed`: in at least two dimensions for every eval/visible pair), that the
 eval rows are eligible, that molecule sets are disjoint, that no two eval
 molecules are similar (Tanimoto >= --diversity-tc), and (unless --no-rerun) that rebuilding with the same seed gives the
 same table. Prints the sanity report. Exits 1 on any failure.
@@ -21,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 from common import log  # noqa: E402
 from dataloader import load_split  # noqa: E402
+from make_difficulty1 import changed_dims  # noqa: E402
 
 PATH_PARAMS = ("train", "cache_dir", "out")
 
@@ -80,9 +82,13 @@ def run_checks(path: Path, rerun: bool = True) -> bool:
             ok = not cols["is_tims"][vis].any()
         elif r.change == "adduct":
             ok = not np.isin(cols["adduct"][vis], list(ev_add)).any()
-        else:
+        elif r.change == "ce":
             ev_ce = set(cols["ce"][ev])
             ok = not any(a in ev_add and c in ev_ce for a, c in zip(cols["adduct"][vis], cols["ce"][vis]))
+        elif r.change == "mixed":
+            ok = len(changed_dims(cols, ev, vis)) >= 2
+        else:
+            ok = False
         if not ok:
             bad.append((r.molecule_id, r.change))
     check("3 difficulty 1 visible rows differ in the declared dimension", not bad, str(bad[:5]))

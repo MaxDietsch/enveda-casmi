@@ -19,6 +19,7 @@ from library import CandidateIndex, Library  # noqa: E402
 import common  # noqa: E402  (dataset-creation)
 from spectra import (CleanParams, clean_spectrum, cosine_similarity, entropy_similarity,  # noqa: E402
                      match_stats, nl_cosine_similarity, nl_entropy_similarity, neutral_losses)
+import make_difficulty1  # noqa: E402  (dataset-creation)
 import stage2  # noqa: E402
 
 RNG = np.random.default_rng(0)
@@ -261,7 +262,37 @@ def test_smoke():
               f"({hits[name]}/20)", hits[name] >= 15)
 
 
+def test_mixed():
+    """`mixed` feasibility by construction and pairwise differing dims."""
+    H, NA = "[M+H]+", "[M+Na]+"
+    #            mol  adduct  ce        tims   eligible
+    rows = [(0, H, (20.0,), True, True), (0, H, (40.0,), True, True),
+            (0, H, (30.0,), False, False), (0, NA, (20.0,), True, True),
+            (0, NA, None, False, False),
+            (1, H, (20.0,), True, True), (1, H, (20.0,), True, True)]
+    meta = pd.DataFrame(rows, columns=["mol", "adduct", "ce", "is_tims", "eligible"])
+    got = make_difficulty1.mixed_options(meta)
+    want = {0: sorted([("instrument+ce", H), ("adduct+ce", H), ("instrument+adduct", H),
+                       ("adduct+ce", NA), ("instrument+adduct", NA), ("instrument+adduct+ce", NA)])}
+    check("mixed: feasible (combo, adduct) pairs by construction", got == want)
+    cols = {c: meta[c].to_numpy() for c in ("eligible", "is_tims", "adduct", "ce")}
+    rng, rows0, ok = np.random.default_rng(1), np.arange(5), True
+    for pair in want[0]:
+        for _ in range(20):
+            ev, vis = make_difficulty1.choose_rows(rng, cols, rows0, "mixed", [pair])
+            dims = make_difficulty1.changed_dims(cols, ev, vis)
+            held = pair[0].split("+")
+            ok &= (len(ev) > 0 and len(vis) > 0 and set(held) <= set(dims)
+                   and cols["is_tims"][ev].all() and (cols["adduct"][ev] == pair[1]).all()
+                   and ("instrument" in held or cols["is_tims"][vis].all())
+                   and ("adduct" in held or (cols["adduct"][vis] == pair[1]).all()))
+    check("mixed: sampled rows differ pairwise in every held-out dim, pins kept", ok)
+    check("mixed: unknown visible CE never counts as differing",
+          make_difficulty1.changed_dims(cols, np.array([0]), np.array([4])) == ["instrument", "adduct"])
+
+
 def main():
+    test_mixed()
     test_neutral_loss()
     test_match_stats()
     test_featurize_vs_pairwise()

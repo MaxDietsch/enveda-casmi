@@ -116,14 +116,34 @@ The hidden test has three novelty classes. Each level imitates one of them:
 | **3** | class 3: novel structure | no | as level 2 | **no**, must be removed |
 | **overall** | the hidden test | 20 % level 1, 60 % level 2, 20 % level 3 (`--share`) | | |
 
-**Level 1, the three "change" types.** The eval molecule keeps some train
-spectra, but they differ from its eval spectra in exactly one way:
+**Level 1, the four "change" types.** The eval molecule keeps some train
+spectra, but they differ from its eval spectra in exactly one way (or, for
+`mixed`, in two or three ways at once):
 
 | `change` | what stays visible in train | what it simulates |
 |---|---|---|
-| `instrument` | only the molecule's **non-timsTOF** spectra (Orbitrap, Q-TOF, …) in the eval adduct; all its timsTOF spectra are hidden | the typical class-1 case: the molecule is in public libraries, but measured on other instruments. Default 60 % of level 1 |
+| `instrument` | only the molecule's **non-timsTOF** spectra (Orbitrap, Q-TOF, …) in the eval adduct; all its timsTOF spectra are hidden | the typical class-1 case: the molecule is in public libraries, but measured on other instruments. Default 30 % of level 1 |
 | `adduct` | only its timsTOF spectra in **other adducts**, e.g. `[M+H]+` visible, eval on `[M+Na]+` | library spectra exist, but for another ion form. Default 20 % |
 | `ce` | only its timsTOF spectra in the eval adduct at **other collision energies** | the same ion is known, but fragmented at another energy. Default 20 % |
+| `mixed` | (advanced) only the rows that differ from **every** eval spectrum in each dim of a combo: `instrument+ce`, `adduct+ce`, `instrument+adduct` or all three | library spectra exist, but from another instrument *and* another adduct and/or energy. Default 30 % |
+
+**`mixed` in detail.** "Differ" is pairwise: for every (eval, visible)
+spectrum pair each held-out dim differs (`is_tims` opposite, adduct strings
+different, CE tuples different; a visible row with unknown adduct or CE never
+counts as different). Dims not held out keep the single-change pins: the
+adduct stays the eval adduct, the instrument stays timsTOF, CE is free.
+Feasibility is computed by construction once over the meta frame, per
+(molecule, eval adduct, combo); `qualifying()["mixed"]` is the union of
+feasible adducts and `qualifying()["mixed_pairs"]` the (combo, adduct) pairs.
+About 111,000 molecules are mixed-feasible, but 98 % only for `adduct+ce`
+(`instrument+ce` 2,460, `instrument+adduct` 1,672, all three 1,657), so the
+mixed quota is split into one sub-quota per combo by `--mixed-dims` and
+filled rarest combo first; shortfalls are logged per combo
+(`difficulty1_mixed_<combo>`). The output keeps `change = "mixed"`; the
+combo is recoverable from the rows (`make_difficulty1.changed_dims`). Note
+that "differs" is a lower bound: 70 % of the single-change `instrument`
+molecules also differ in CE for every pair (CE values rarely coincide across
+instruments), and half the `instrument+adduct` molecules differ in all three.
 
 Collision energies are not matched for `instrument`, because their units
 differ between instruments (NCE, eV, V).
@@ -163,7 +183,7 @@ train.parquet ──► cache (once)                       ──► make_*.py (
 1. **Candidates.** Molecules with ≥ 1 eligible row and mass 157–1159 Da.
    Level 1 also needs the right train rows for its change type (2,474
    molecules qualify for `instrument`, ~69,000 for `adduct`, ~178,000 for
-   `ce`).
+   `ce`, ~111,000 for `mixed`).
 2. **Sampling.** Weighted sampling without replacement (Efraimidis–Spirakis
    keys). The weights combine:
    - 1 / number of neighbours (diversity balance, [§2.5](#25-diversity));
@@ -232,7 +252,8 @@ Every script prints its options with `--help`.
 
 | flag | default | meaning |
 |---|---|---|
-| `--change-mix` | `instrument=0.6,adduct=0.2,ce=0.2` | Share of molecules per change type ([§2.4](#24-three-difficulty-levels)). Normalised to 1. A single type is allowed, e.g. `instrument=1` (at most 2,474 molecules qualify). |
+| `--change-mix` | `instrument=0.3,adduct=0.2,ce=0.2,mixed=0.3` | Share of molecules per change type ([§2.4](#24-three-difficulty-levels)). Normalised to 1. A single type is allowed, e.g. `instrument=1` (at most 2,474 molecules qualify). Quotas are filled mixed → instrument → adduct → ce. |
+| `--mixed-dims` | `instrument+ce=0.4,adduct+ce=0.3,instrument+adduct=0.2,instrument+adduct+ce=0.1` | Split of the `mixed` quota over combos of held-out dims (normalised to 1). |
 | `--out` | `out/difficulty1.parquet` | |
 
 ### 4.3 `make_difficulty2.py`: unseen molecules (difficulty 2, or 3)
@@ -254,7 +275,7 @@ want different molecules.
 | flag | default | meaning |
 |---|---|---|
 | `--share` | `0.2,0.6,0.2` | Shares of difficulty 1, 2 and 3. |
-| `--change-mix` | `instrument=0.6,adduct=0.2,ce=0.2` | For the difficulty-1 part ([§4.2](#42-make_difficulty1py-same-molecule-different-setting)). |
+| `--change-mix`, `--mixed-dims` | as in `make_difficulty1.py` | For the difficulty-1 part ([§4.2](#42-make_difficulty1py-same-molecule-different-setting)). |
 | `--neighbour-removed-frac`, `--neighbour-tc`, `--max-removed-neighbours` | `0.10`, `0.5`, `200` | For the difficulty-2 and -3 parts ([§4.3](#43-make_difficulty2py-unseen-molecules-difficulty-2-or-3)). |
 | `--out` | `out/overall.parquet` | |
 
@@ -352,7 +373,7 @@ Give every variant its own `--out`, otherwise it overwrites the default file.
 | `key` | str | tautomer-canonical InChIKey14: **the answer** the scorer compares |
 | `smiles` | str | representative SMILES of the answer (the most frequent one in train) |
 | `difficulty` | int8 | 1, 2 or 3 |
-| `change` | str / null | `instrument`, `adduct` or `ce` (level 1 only) |
+| `change` | str / null | `instrument`, `adduct`, `ce` or `mixed` (level 1 only) |
 | `neighbours_removed` | bool | similar molecules were hidden as well |
 | `removed_keys` | list<str> | keys of those neighbours; all of their rows are hidden |
 | `exclude_from_library` | bool | level 3: the structure must not be in any candidate pool |
@@ -524,7 +545,7 @@ print(
 | 1 | no eval row is visible |
 | – | every eval row belongs to its molecule's key |
 | 2 | no level-2/3 key has a visible row |
-| 3 | every level-1 molecule keeps ≥ 1 visible row, and every visible row differs in the declared dimension (`instrument`: no visible timsTOF row; `adduct`: no visible row in an eval adduct; `ce`: no visible row in an eval adduct with an eval CE) |
+| 3 | every level-1 molecule keeps ≥ 1 visible row, and every visible row differs in the declared dimension (`instrument`: no visible timsTOF row; `adduct`: no visible row in an eval adduct; `ce`: no visible row in an eval adduct with an eval CE; `mixed`: every eval/visible pair differs in ≥ 2 dims) |
 | 4a | neighbour-removed molecules have no visible molecule with Tanimoto ≥ `--neighbour-tc` (recomputed from the fingerprints) |
 | 4b | hidden neighbours have no visible row |
 | 4c | the stored `max_visible_tc` matches a recomputation |

@@ -22,15 +22,18 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common  # noqa: E402
 from common import log  # noqa: E402
-from make_difficulty1 import CHANGES, select_difficulty1  # noqa: E402
+from make_difficulty1 import (CHANGES, DEFAULT_CHANGE_MIX, DEFAULT_MIXED_DIMS,  # noqa: E402
+                              parse_mixed_dims, select_difficulty1)
 from make_difficulty2 import add_removal_args, check_frac, select_difficulty2  # noqa: E402
 
 
 def add_args(parser: argparse.ArgumentParser) -> None:
     common.add_common_args(parser)
     parser.add_argument("--share", default="0.2,0.6,0.2", help="difficulty 1,2,3 shares")
-    parser.add_argument("--change-mix", default="instrument=0.6,adduct=0.2,ce=0.2",
-                        help="difficulty 1: share of molecules per change type")
+    parser.add_argument("--change-mix", default=DEFAULT_CHANGE_MIX,
+                        help="difficulty 1: share of molecules per change type (instrument, adduct, ce, mixed)")
+    parser.add_argument("--mixed-dims", default=DEFAULT_MIXED_DIMS,
+                        help="difficulty 1 mixed: weight per combo of held-out dims")
     add_removal_args(parser)
     parser.add_argument("--out", type=Path, default=common.OUT / "overall.parquet")
 
@@ -57,7 +60,7 @@ def build(args: argparse.Namespace, prepared=None) -> tuple[pd.DataFrame, dict]:
         shortfalls.update(sf)
     rec, sf = select_difficulty1(meta, molecules, n1, rng, used_keys, used_ids, rows_index,
                                  common.parse_mix(args.change_mix, CHANGES), diversity, base,
-                                 ion_pos_share=args.ion_pos_share)
+                                 ion_pos_share=args.ion_pos_share, mixed_dims=parse_mixed_dims(args))
     records = rec + records
     shortfalls.update(sf)
     df = common.annotate_similarity(common.records_to_frame(records), molecules, row_key, sim)
