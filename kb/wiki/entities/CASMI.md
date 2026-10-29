@@ -9,4 +9,4 @@ tags: [entity, community, benchmark]
 
 # CASMI
 
-**Critical Assessment of Small Molecule Identification** — a community benchmark contest for structure elucidation from MS/MS data, founded 2012 by Emma Schymanski and Steffen Neumann and run by academic teams 2012–2022. The Kaggle competition revives the name with the founders' permission. The 2026 edition focuses on natural-product-like molecules and formalises the classic CASMI categories into the three novelty classes ([[concepts/competition/Novelty Classes]]).
+**Critical Assessment of Small Molecule Identification** — a recurring community benchmark contest for identifying molecular structures from tandem-mass-spectrometry data, founded in 2012 by Emma Schymanski and Steffen Neumann and run by academic teams until 2022. The Kaggle competition revives the name with the founders' permission. The 2026 edition focuses on natural-product-like molecules and formalises the classic CASMI difficulty categories into the three hidden novelty classes ([[concepts/competition/Novelty Classes]]).

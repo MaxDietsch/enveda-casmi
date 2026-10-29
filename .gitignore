@@ -6,6 +6,12 @@ dist/
 wheels/
 *.egg-info
 
+# Env settings
+.env
+
+# Claude
+.claude/settings.json
+
 # Virtual environments
 .venv
 
@@ -39,3 +45,6 @@ max_class1_exp/out/
 mlflow.db*
 mlruns/
 mlflow.env
+
+# Knowledge Base
+kb/wiki/.obsidian

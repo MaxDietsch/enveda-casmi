@@ -6,6 +6,9 @@
 - [[#Concepts]] · [[#Entities]] · [[#Summaries]] · [[#Open Questions]]
 
 ## Concepts
+### Reference
+- [[concepts/Glossary]] — plain-language definitions of the recurring terms
+
 ### Competition
 - [[concepts/competition/index|Competition]] — the challenge, metric and rules at a glance
     - [[concepts/competition/Task and Evaluation]] — MRR@25, tautomer-canonical InChIKey14 matching, submission format, quota
@@ -51,8 +54,8 @@
 - 2026-10-28 — [[summaries/repo-solution-code]] — src/ pipeline, scripts and their roles
 
 ## Open Questions
-- Q1: How much class-1 headroom is adduct-shifted matching vs CE difference, and does neutral-loss re-ranking close the `adduct` gap (0.393 → 0.5+)?
-- Q2: Best class-3 strategy per engineering hour: de novo SMILES transformer, formula-conditioned retrieval (SIRIUS/MIST-CF style), or embedding kNN (DreaMS)?
-- Q3: How to calibrate library-hit confidence (difficulty-1 vs difficulty-2 splits) for the class-agnostic final ordering?
-- Q4: How to close the chemistry gap (synthetic timsTOF train vs natural-product-like test) — per-library reporting, NP-weighted eval, Q-TOF NP spectra?
+- Q1: How much of the class-1 ranking error is due to adduct-shifted peak matching versus collision-energy difference — and does neutral-loss re-ranking raise the changed-adduct MRR from 0.393 toward 0.5?
+- Q2: Best class-3 approach per unit of development effort: de novo SMILES transformer, formula-conditioned retrieval (SIRIUS/MIST-CF style), or embedding nearest-neighbour (DreaMS)?
+- Q3: How to calibrate reference-spectrum-match confidence (on difficulty-1 versus difficulty-2 splits) for the class-agnostic final ordering?
+- Q4: How to close the chemistry gap (synthetic timsTOF training data vs natural-product-like test) — per-library reporting, natural-product-weighted evaluation, Q-TOF natural-product spectra?
 - Q5: Does the hidden class mix match the assumed 20/60/20, and is the strategy robust to a different mix?

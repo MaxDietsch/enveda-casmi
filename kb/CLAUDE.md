@@ -40,6 +40,7 @@ All pages carry YAML frontmatter: `title`, `type`, `created`, `updated`, `source
 ## Current articles
 
 ### Concepts
+- [[concepts/Glossary]] — plain-language definitions of the recurring terms (anchor for non-chemist readers)
 - [[concepts/competition/index|Competition]] — the challenge, metric and rules
     - [[concepts/competition/Task and Evaluation]]
     - [[concepts/competition/Test Set]]
@@ -79,10 +80,10 @@ All pages carry YAML frontmatter: `title`, `type`, `created`, `updated`, `source
 
 ## Open research questions
 
-- How much of the class-1 (library-match) headroom is adduct-shifted peak matching vs. CE differences? (stage-1 shows `adduct` change is the bottleneck: MRR 0.393 vs 0.933 for `ce`)
-- Best de novo strategy for class 3: transformer SMILES generation vs. formula-conditioned retrieval (SIRIUS/MIST-CF style) vs. embedding nearest-neighbour (DreaMS)?
-- How to calibrate class-1 library-hit confidence so confident hits rank above database/de novo candidates in the merged, class-agnostic submission?
-- How to close the chemistry gap: train timsTOF data is synthetic drug-like (`enveda-180`), test is natural-product-like?
+- How much of the class-1 (reference-spectrum-match) ranking error is adduct-shifted peak matching vs collision-energy difference? (stage-1 shows the changed-adduct case is the bottleneck: MRR 0.393 vs 0.933 for changed collision energy)
+- Best approach for class 3 per unit of development effort: transformer SMILES generation vs formula-conditioned retrieval (SIRIUS/MIST-CF style) vs embedding nearest-neighbour (DreaMS)?
+- How to calibrate class-1 match confidence so that confident reference-spectrum matches rank above database and de novo candidates in the merged, class-agnostic submission?
+- How to close the chemistry gap: the instrument-matched training data is synthetic (`enveda-180`), the test is natural-product-like?
 
 ## Research gaps
 
@@ -99,6 +100,7 @@ Sources to ingest:
 
 ## Notes for the LLM
 
+- Audience: technically literate readers **without a chemistry background**. Explain every chemistry term at first use (see [[concepts/Glossary]]); standard machine-learning terminology may be used without gloss. Avoid informal slang and internal shorthand.
 - Language: en
 - Tone: neutral, deep technical; concise pages, heavy cross-linking
 - Depth: deep technical (this wiki drives an active competition solution)

@@ -9,4 +9,4 @@ tags: [entity, tool, formula-annotation]
 
 # SIRIUS
 
-The established toolbox for molecular-formula annotation and structure identification from MS/MS (with its CSI:FingerID substructure/fingerprint prediction). The official data description names it — with [[entities/MIST-CF|MIST-CF]] — as the reference for the **formula-first** strategy: predict the molecular formula first, then condition structure search on it to narrow the candidate space. Relevant to class 2 (database retrieval) and class 3 (generation) in [[concepts/solution/De Novo Channel]].
+An established academic toolbox for identifying molecules from tandem-mass spectra: it predicts the **molecular formula** from the spectrum (and, via its CSI:FingerID component, probable substructures). The official data description names it — together with [[entities/MIST-CF|MIST-CF]] — as the reference for the **formula-first strategy**: predict the molecular formula first, then restrict structure search or generation to candidates with that formula, which sharply reduces the search space. Relevant to class 2 (database retrieval) and class 3 (generation) as discussed in [[concepts/solution/De Novo Channel]].

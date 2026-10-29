@@ -9,20 +9,20 @@ tags: [competition, metric, mrr, submission-format]
 
 # Task and Evaluation
 
-**Task.** For each `molecule_id` in the test set (a group of MS/MS spectra of one unknown molecule), output up to 25 candidate structures as SMILES, best guess first, semicolon-joined in a single field. Predictions are **per molecule**, so evidence from all spectra of a molecule must be aggregated ([[concepts/competition/Test Set]]).
+**Task.** For each `molecule_id` in the test set — a group of tandem-mass-spectrometry spectra of one unknown molecule — output up to 25 candidate structures as **SMILES** strings (a text encoding of a molecular structure), best guess first, joined by semicolons in a single field. Predictions are **per molecule**, so the evidence from all of a molecule's spectra must be combined into one ranked list ([[concepts/competition/Test Set]]).
 
-**Metric — MRR@25.**
+**Metric — MRR@25 (mean reciprocal rank, top 25).** A molecule earns the reciprocal of the position of the **first** correct guess: 1.0 for position 1, 0.5 for position 2, 0.04 for position 25, and 0 if no guess is correct.
 
 $$\text{MRR@25} = \frac{1}{U} \sum_{u=1}^{U} \frac{1}{rank_u}$$
 
-where $rank_u$ is the position of the **first** correct structure for molecule $u$; a molecule with no correct guess scores 0. Only the first hit counts — later duplicates of the truth add nothing.
+Only the first correct guess counts; further copies of the correct answer add nothing.
 
-**Matching key.** A prediction is correct when it has the same **atom connectivity** as the answer: both SMILES pass through RDKit's tautomer canonicalization (pinned at **2026.03.3**) and are reduced to the **first block of the InChIKey (InChIKey14)**, then compared. Stereo and tautomer form are free. Practical consequences:
+**Matching rule.** A prediction is correct when it describes the same flat molecular skeleton as the answer: both the predicted SMILES and the answer are passed through RDKit's tautomer standardisation (RDKit version pinned at 2026.03.3) and reduced to the **first block of the InChIKey (InChIKey14)**, then compared. Stereochemistry and tautomer form do not matter (two different-looking SMILES of glucose can reduce to the same key). Practical consequences:
 
-- Never emit multiple tautomers/stereoisomers of the same candidate — they waste slots (identical InChIKey14).
-- Local scoring must use the identical key: `TautomerEnumerator().Canonicalize(mol)` → `MolToInchiKey()[:14]` ([[concepts/solution/Evaluation Strategy]]).
-- A formula-level match is *not* a hit, but same-formula structures are the strongest decoys ([[concepts/solution/Re-ranking]]).
+- Never submit several tautomers or stereo-variants of one candidate — they have identical InChIKey14s and waste list positions.
+- Local scoring must use exactly this key: `TautomerEnumerator().Canonicalize(mol)` → `MolToInchiKey()[:14]` ([[concepts/solution/Evaluation Strategy]]).
+- A structure with the same molecular formula is *not* automatically correct, but same-formula structures are the most convincing wrong candidates ("decoys"; [[concepts/solution/Re-ranking]]).
 
-**Submission format.** `molecule_id,smiles` header; every `molecule_id` exactly once; no nulls, no repeated ids, ≤ 25 guesses per row. Fewer than 25 guesses is allowed and wrong guesses are free beyond the rank they occupy → **always fill all 25 slots** with diverse, plausible candidates, ordered by confidence.
+**Submission format.** Header `molecule_id,smiles`; every `molecule_id` exactly once; no empty fields, no repeated ids, at most 25 guesses per row. Submitting fewer than 25 guesses is allowed, and a wrong guess costs nothing beyond the position it occupies — so **always fill all 25 positions** with distinct, plausible candidates, ordered by confidence.
 
-**Quota.** 5 submissions/day; winning requires open-sourcing under an OSI license. Metric reference: Kaggle [metric notebook](https://www.kaggle.com/code/metric/casmi-mean-reciprocal-rank).
+**Submission limit.** 5 per day; winners must publish their code under an open-source licence. Reference implementation: Kaggle [metric notebook](https://www.kaggle.com/code/metric/casmi-mean-reciprocal-rank).

@@ -9,4 +9,4 @@ tags: [entity, database]
 
 # PubChem
 
-The comprehensive open molecular database. The class boundary runs through it: class 2 = "known structure, no public spectra" — the structure **is in PubChem** (or COCONUT); class 3 = "novel structure" — **not in PubChem at all**, reachable only by de novo generation. No PubChem pool build exists in the repo yet (open question: snapshot date and coverage matter for the class-2/3 split). Level-3 evaluation keys must be removed from every pool, external ones included ([[concepts/solution/Candidate Pools]]).
+The comprehensive open database of chemical structures. The difficulty-class boundary runs through it: class 2 = "known structure, never measured publicly" — the structure **is listed in PubChem** (or COCONUT); class 3 = "unknown structure" — **not listed in PubChem at all**, reachable only by generating a structure from the spectrum. No PubChem extract exists in the repo yet (open question: which snapshot date and coverage define the class-2/3 boundary). Level-3 evaluation keys must be removed from every candidate pool, external ones included ([[concepts/solution/Candidate Pools]]).
