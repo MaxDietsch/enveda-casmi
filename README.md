@@ -23,6 +23,14 @@ You will need Kaggle API credentials (`~/.kaggle/kaggle.json`) for the download 
 Other derived datasets (`coconut_pool.parquet`, FP caches, etc.) are produced by the
 scripts in `scripts/` (e.g. `build_coconut_pool.py`).
 
+## Spectra visualizer
+
+`spectra-viz/` contains a small Rust GUI for browsing the training data:
+filter molecules by SMILES/formula/InChIKey and metadata, select spectra, and
+view overlaid or mirrored peak plots next to 2D structure depictions. See
+[spectra-viz/README.md](spectra-viz/README.md) for build and usage
+instructions.
+
 ## Experiment tracking
 
 Training and evaluation scripts log parameters, metrics, and model artifacts to

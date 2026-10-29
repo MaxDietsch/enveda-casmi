@@ -26,6 +26,9 @@ kaggle_assets/
 *.npy
 *.parquet
 
+# Rust build artifacts
+spectra-viz/target/
+
 # Eval-set simulator outputs and cache
 dataset-creation/out/
 
