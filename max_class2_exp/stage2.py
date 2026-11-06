@@ -436,7 +436,10 @@ def run(args, tracker: tracking.Tracker, stem: str) -> None:
     # ---- split, universe, eval pool
     split = load_split(args.split, args.train, args.cache_dir)
     info = split.info
-    cache_dir = Path(info["params"]["cache_dir"])
+    # info["params"]["cache_dir"] is the ABSOLUTE path of the machine that
+    # built the split — useless (and missing) on any other machine. load_split
+    # already hash-verified THIS run's --cache-dir against the split, so use it.
+    cache_dir = Path(args.cache_dir)
     molecules = pd.read_parquet(cache_dir / "molecules.parquet")
     row_key = np.load(cache_dir / "row_key.npy")
     fps = common.fingerprint_matrix(molecules, cache_dir)
