@@ -4,6 +4,10 @@
 > 2026-11-05 synthesis of all 150 competition discussion threads and the
 > concrete P0/P1/P2 changes it implies for this experiment.
 >
+> **What is trained, in plain words:** see
+> [`TRAINING_EXPLAINED.md`](TRAINING_EXPLAINED.md) — every model and
+> channel, its inputs, which molecules it sees, and a vocabulary table.
+>
 > **Code-level walkthrough:** see [`PIPELINE.md`](PIPELINE.md) for what
 > happens to one spectrum at inference and how the training script works,
 > step by step.

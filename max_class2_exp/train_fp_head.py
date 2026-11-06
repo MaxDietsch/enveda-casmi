@@ -128,6 +128,10 @@ def run(args, tracker):
         max_rows=args.max_rows, val_structures=args.val_structures,
         exclude=excluded)
     excluded_sha = hashlib.sha256("|".join(excluded_keys).encode()).hexdigest()[:16]
+    # cache key must distinguish re-trainings of the SAME-named encoder
+    # (a resumed run overwrites denovo_v1.pt; embeddings would go stale)
+    enc_stat = args.encoder.stat()
+    enc_stamp = f"{args.encoder.name}:{enc_stat.st_mtime_ns}:{enc_stat.st_size}"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     allow_checkpoint_globals()      # older checkpoints embed Path objects / numpy priors
@@ -155,7 +159,7 @@ def run(args, tracker):
         z = np.load(args.cache, allow_pickle=True)
         if (str(z["meta_data"]) == data_path.name
                 and str(z["meta_sha"]) == excluded_sha
-                and str(z["meta_enc"]) == args.encoder.name
+                and str(z["meta_enc"]) == enc_stamp
                 and int(z["x"].shape[0]) == len(train_df) + len(val_df)):
             x = z["x"]
             print(f"embedding cache hit: {args.cache}")
@@ -167,7 +171,7 @@ def run(args, tracker):
         args.cache.parent.mkdir(parents=True, exist_ok=True)
         np.savez(args.cache, x=x,
                  meta_data=data_path.name, meta_sha=excluded_sha,
-                 meta_enc=args.encoder.name)
+                 meta_enc=enc_stamp)
     n_train = len(train_df)
     x_train, x_val = x[:n_train], x[n_train:]
 

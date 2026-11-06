@@ -337,8 +337,8 @@ def run(args, tracker):
     steps_per_epoch = max(1, len(train_mz) // (args.batch_size * args.grad_accum))
     total_steps = steps_per_epoch * args.epochs
     print(f"{steps_per_epoch} optim steps/epoch")
-    best_metric = -1.0
-    step = base_step
+    best_score = (-1.0, -1.0)   # (exact_hit, tanimoto) — lexicographic; tanimoto
+    step = base_step            # breaks the all-zero-exact tie and tracks progress
     last_path = args.out.with_suffix(".pt.last.pt")
     config = tracking.public_args(args)
     for epoch in range(args.epochs):
@@ -385,27 +385,31 @@ def run(args, tracker):
                     tracker.log_metrics({"val/exact_hit": hits, "val/validity": valid,
                                          "val/tanimoto": tani}, step=step)
                     print(f"  GEN: exact {hits:.3f} valid {valid:.3f} tanimoto {tani:.3f}", flush=True)
-                    if hits > best_metric:
-                        best_metric = hits
+                    score = (hits, tani)
+                    if score > best_score:
+                        best_score = score
                         torch.save({
                             "state_dict": model.state_dict(),
                             "config": config,
                             "val_exact_hit": hits,
+                            "val_tanimoto": tani,
                             "meta": meta,
                         }, args.out)
-                        print(f"  saved -> {args.out}", flush=True)
+                        print(f"  saved -> {args.out} "
+                              f"(exact {hits:.3f}, tanimoto {tani:.3f})", flush=True)
                     model.train()
     model.eval()
     hits, valid, tani = gen_metrics(
         model, tok, device, val_mz, val_int, val_prec, val_smiles, val_keys)
     print(f"FINAL GEN: exact {hits:.3f} valid {valid:.3f} tanimoto {tani:.3f}")
-    if hits > best_metric:
+    score = (hits, tani)
+    if score > best_score:
         torch.save({"state_dict": model.state_dict(), "config": config,
-                    "val_exact_hit": hits, "meta": meta}, args.out)
+                    "val_exact_hit": hits, "val_tanimoto": tani, "meta": meta}, args.out)
         print(f"saved -> {args.out}")
-        best_metric = hits
+        best_score = score
     tracker.log_metrics({"final/exact_hit": hits, "final/validity": valid,
-                         "final/tanimoto": tani, "final/best_exact_hit": best_metric})
+                         "final/tanimoto": tani, "final/best_exact_hit": best_score[0]})
     tracker.log_artifact(str(args.out))
     tracker.log_artifact(str(args.tokenizer))
 
