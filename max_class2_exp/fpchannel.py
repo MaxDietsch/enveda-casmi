@@ -250,7 +250,7 @@ class FpEncoder:
             return [None] * len(spectra_lists)
         pooled = encode_batch(self.model, flat_mz, flat_int, flat_prec, self.device, batch=32)
         t = torch.from_numpy(pooled).to(next(self.head.parameters()).device)
-        probs = torch.sigmoid(self.head(t)).numpy()
+        probs = torch.sigmoid(self.head(t)).detach().cpu().numpy()
         out, pos = [], 0
         for k in seg:
             out.append(probs[pos: pos + k].mean(axis=0) if k else None)
