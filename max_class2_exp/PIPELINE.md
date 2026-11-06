@@ -376,6 +376,24 @@ function, so R4 holds by construction:
 | channel-P v1 | **deliberately not cached** — retrained per run on the split-visible rows; a stale cached model would be a silent leak |
 | in-process LRU | `fragment_mzs`, `metfrag_mzs`, composite-spectrum merges |
 
+### B9. Serving: the real test set (`predict_test.py`, the Kaggle kernel)
+
+Part A with the simulator removed: all train rows visible, the pool = the
+train structures themselves (**no library additions** — a test truth absent
+from train cannot be added by name), queries built from `test.parquet` with
+test-like cleaning (`clean_peaks` → `clean_spectrum`), the analogue library
+empty (channel off), F2 off, channel P v2 loaded from `--artifacts` (the
+guard passes trivially — no eval keys at serve time) and **required**: the
+fusion model was trained on v2 fp features, so a silent v1 fallback would
+skew serving (`--allow-v1-fp` opts in explicitly). The fusion model comes
+from `--model` with its training-time `dropped` block restored; the
+molecule-key cache is read as shipped, never rebuilt. Shortlists under 25
+guesses (or empty windows / unusable masses) are padded with the
+mass-nearest pool structures. In the Kaggle kernel
+(`scripts/build_kernel2.py`), train + cache + artifacts + model + formulas +
+RDKit wheels arrive in the attached dataset; RDKit (absent from Kaggle's
+image) is pip-installed offline into `/tmp` before anything imports it.
+
 ---
 
 ## The one-paragraph version

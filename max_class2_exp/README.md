@@ -404,6 +404,7 @@ Implemented per FORUM_FINDINGS.md §0 (P0.1–P0.6):
 | `annotations.py` | molecular formulas (RDKit, disk-cached) for the isomer panel + `cand_n_same_formula`; per-row source-library stats (public/timsTOF) for the `has_public_spectra` stratification | built, tested |
 | `features.py` | the featurizer (all channels, R4), within-shortlist z-scoring, logistic/HGB fusion with seed ensembles + ablation, ranking/eval helpers (`truth_rank`, failure buckets, panels, protect, bootstrap) | built, tested |
 | `stage2.py` | the CLI: pool → channels → train → evaluate → results/metrics/model; the §6 protocol | built (post-forum rewrite) |
+| `predict_test.py` | serving: the real test set → pool (train structures only, no additions) → same `featurize` (R4) → fusion model → top-25 `submission.csv`; the Kaggle kernel's entry point | built |
 | `test_stage2.py` | correctness tests | 135 checks passing |
 | `out/` | results, metrics, models, caches (git-ignored) | — |
 
@@ -558,6 +559,54 @@ channel off unless `--enable-analogues`), `--external-pool` (COCONUT),
 `{split}_stage2_results.parquet` (per-molecule ranks, buckets, panels,
 top-25 keys), `..._stage2_features.parquet` (per-candidate feature rows)
 and `..._stage2_metrics.json` (the full §6 protocol).
+
+### 7.3 Serving the fusion on the real test set (Kaggle kernel)
+
+`predict_test.py` is the serving path: every train row visible, the pool is
+the train structures themselves — no library additions, because a test truth
+absent from train cannot be added by name — featurized with the same
+`featurize` (R4) with in-silico + metfrag-lite live, channel P v2 from
+`--artifacts` (the guarded load trivially passes with no eval keys), F2 and
+the analogue channel off. The fusion model comes from `--model` with its
+training-time `dropped` features restored exactly like `--model-path`; the
+cache under `--cache-dir` is **read, never rebuilt** (an upload mtime change
+would otherwise trigger a silent `ensure_cache` rebuild and break byte-parity
+with training).
+
+```bash
+uv run python max_class2_exp/predict_test.py --limit 20   # smoke on real test rows
+uv run python max_class2_exp/predict_test.py              # full local pass
+```
+
+The Kaggle kernel (`scripts/build_kernel2.py` → `../kernels/casmi26-class2-sub`)
+embeds the serving closure as base64 payloads (the class-1 build pattern;
+no stage2/train code ships) and takes everything else from the attached
+private dataset `<user>/enveda-class2-serve`:
+
+| dataset file | what it is |
+|---|---|
+| `train_clean.parquet` | the cleaned train data the model was trained on |
+| `cache/{molecules.parquet, row_key.npy, fps.npy, fps.hash}` | the molecule-key cache, read-only at serve time |
+| `denovo_v1.pt` + `denovo_fp_head.pt` | channel-P v2 artifacts (guarded; `denovo_tokenizer.json` optional) |
+| `difficulty2_stage2_model.joblib` | the fusion model — serve the one trained F2-off (the box run) |
+| `formulas.parquet` | pre-seeds the RDKit formula cache (saves a few kernel minutes) |
+| `rdkit-*.whl` | Kaggle's image ships no RDKit (found during the class-1 kernel work); the kernel pip-installs it offline into `/tmp` |
+
+```bash
+uv run python scripts/build_kernel2.py
+# stage the dataset dir (table above; one flat dir, cache/ as a subdir),
+# kaggle datasets create -p <staging dir>, attach it in kernel-metadata.json
+# push the kernel dir, wait for "complete", then:
+uv run python scripts/submit_kernel.py --kernel <user>/casmi26-class2-sub --version N
+```
+
+Serve-time skew notes: F2 and the analogue channel are off exactly as in the
+box training run; the visibility/source block is model-dropped, so the
+simulator's "truth is an addition" asymmetry cannot fire at serve time;
+shortlists shorter than 25 (or empty windows / unusable query masses) are
+padded with the mass-nearest pool structures. Serving refuses to run without
+the v2 artifacts (`--allow-v1-fp` opts into the v1 fallback — not recommended,
+the shipped model was trained on v2 fp features).
 
 ## 9. Results
 

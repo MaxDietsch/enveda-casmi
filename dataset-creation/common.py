@@ -190,6 +190,17 @@ def _raw_source(path: Path) -> Path:
     return path
 
 
+def _raw_source_missing(path: Path) -> bool:
+    """True for a *_clean.parquet whose raw source file is absent — a
+    cleaned-only machine (e.g. a GPU box synced without the 2.9 GB raw
+    train.parquet). Nothing can be stamped there, and a rebuild would
+    rewrite molecules.parquet with identical content but different bytes,
+    breaking the byte-level cache_hash every split records."""
+    path = Path(path)
+    return (path.name.endswith(CLEAN_SUFFIX)
+            and not path.with_name(path.name[: -len(CLEAN_SUFFIX)] + ".parquet").exists())
+
+
 def _train_stamp(train_path: Path) -> dict:
     # Stamp the raw file: the cache holds molecule metadata only, which
     # cleaning does not touch, so a *_clean.parquet copy must not look "newer"
@@ -299,6 +310,12 @@ def ensure_cache(train_path: Path = TRAIN, cache_dir: Path = CACHE, meta: pd.Dat
     mol_path, rk_path = cache_dir / "molecules.parquet", cache_dir / "row_key.npy"
     stamp = _train_stamp(train_path)
     if mol_path.exists() and rk_path.exists() and not rebuild:
+        if _raw_source_missing(train_path):
+            # cleaned-only machine: no raw file to stamp against, and rewriting
+            # the cache here would break the split's byte-level cache_hash.
+            # load_split has already verified this cache against the split.
+            log(f"[cache] raw train source absent; trusting the synced cache ({mol_path})")
+            return pd.read_parquet(mol_path), np.load(rk_path)
         cached = _read_cache_meta(mol_path)
         if {k: cached.get(k) for k in stamp} == stamp:
             log(f"[cache] molecule keys: cached ({mol_path})")

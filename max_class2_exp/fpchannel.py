@@ -51,9 +51,17 @@ import common  # noqa: E402
 from dataloader import clean_peaks, read_rows  # noqa: E402
 from spectra_utils import CleanParams, clean_spectrum  # noqa: E402
 
-# channel-P v2 artifacts (auto-detected; both must exist and pass the guard)
+# channel-P v2 artifacts (auto-detected; both must exist and pass the guard).
+# Serving (predict_test.py / the Kaggle kernel) points at an --artifacts dir
+# instead via build_fp_model(artifact_dir=...); these stay the local default.
 ENCODER_PATHS = (HERE / "out" / "denovo_v1.pt", HERE / "out" / "denovo_v1.pt.last.pt")
 HEAD_PATHS = (HERE / "out" / "denovo_fp_head.pt",)
+
+
+def _artifact_paths(artifact_dir=None) -> tuple[tuple[Path, ...], tuple[Path, ...]]:
+    """(encoder candidate paths best-first, head candidate paths) for a run."""
+    d = Path(artifact_dir) if artifact_dir else HERE / "out"
+    return (d / "denovo_v1.pt", d / "denovo_v1.pt.last.pt"), (d / "denovo_fp_head.pt",)
 
 N_BITS = 2048
 N_BINS = 500                       # linear m/z bins over [0, MZ_MAX]
@@ -287,19 +295,23 @@ def _load_guarded(path: Path, eval_keys: set, what: str) -> dict:
 
 
 def build_fp_model(mask, row_key, train_path, fps, params, seed, workers,
-                   eval_row_ids, eval_keys, query_rows=None, log=common.log):
+                   eval_row_ids, eval_keys, query_rows=None, log=common.log,
+                   artifact_dir=None):
     """The run's channel-P model: v2 artifacts when they exist (guarded),
     else a v1 linear model trained on the visible rows only.
 
     mask: the visibility mask in force (clean mode: split mask minus the
     pseudo-truths' rows). query_rows: the pseudo-query rows of this run
-    (R2 assert, clean mode only). Returns (model | None, info dict)."""
+    (R2 assert, clean mode only). artifact_dir: where the v2 artifacts live
+    (default: this experiment's out/; serving passes the Kaggle dataset
+    mount or a local staging dir). Returns (model | None, info dict)."""
     t0 = time.time()
     eval_keys = {str(k) for k in eval_keys}
 
     # ---- v2: frozen artifacts, guarded
-    enc_path = next((p for p in ENCODER_PATHS if p.exists()), None)
-    head_path = next((p for p in HEAD_PATHS if p.exists()), None)
+    enc_paths, head_paths = _artifact_paths(artifact_dir)
+    enc_path = next((p for p in enc_paths if p.exists()), None)
+    head_path = next((p for p in head_paths if p.exists()), None)
     if enc_path is not None and head_path is not None:
         import torch
         from enveda_casmi26.fp_model import DeNovoModel, build_fp_head
