@@ -25,11 +25,15 @@ warnings.filterwarnings("ignore", message="Mean of empty slice")
 import numpy as np
 import pandas as pd
 
-from enveda_casmi26.fragmentation import ADDUCTS, ADDUCT_ALIASES
-
 
 def neutral_mass(precursor_mz: float, adduct: str) -> float:
-    """Neutral monoisotopic mass implied by a precursor m/z and adduct."""
+    """Neutral monoisotopic mass implied by a precursor m/z and adduct.
+
+    The adduct tables are imported lazily so that this module (and everything
+    that only needs neutral mass: candidate windows, library search, the
+    stage-2 predictor) works without RDKit, e.g. inside the Kaggle kernel.
+    """
+    from enveda_casmi26.fragmentation import ADDUCTS, ADDUCT_ALIASES
     base = ADDUCT_ALIASES.get(adduct, adduct)
     if base not in ADDUCTS or not np.isfinite(precursor_mz):
         return math.nan

@@ -298,7 +298,37 @@ Validation done so far (all with `--limit 100`):
 
 ---
 
-## 8. Next stages (not implemented yet)
+## 8. Competition test set: `predict_test.py` and the Kaggle kernel
+
+The stage-2 pipeline runs on the real test set with `max_class1_exp/predict_test.py`:
+per test `molecule_id` the candidate window (± `--ppm`, all train rows visible —
+no eval split), the same `featurize` (R4) on test-like-cleaned query spectra
+(`dataloader.clean_peaks` then `clean_spectrum`), the saved model's P(truth)
+for ranking, and mass-nearest padding to 25 guesses (short lists are never
+left short; class 2/3 molecules can only score through the padding).
+
+```
+uv run python max_class1_exp/predict_test.py --test data/test.parquet
+# -> submissions/stage2_submission.csv + max_class1_exp/out/test_stage2_diag.parquet
+```
+
+Because the public test.parquet spectra are duplicates of train rows, the
+placeholder truth is known and `scripts/evaluate_kernel_output.py` scores the
+submission the way the competition does: this pipeline gets MRR@25 0.707
+(top-1 0.562, truth in the top-25 for 99.3%). Expect about that on the public
+leaderboard; the hidden re-run test set contains the real class 2/3 molecules.
+
+**Kaggle kernel** (code competition — submissions must come from a notebook):
+`scripts/build_kernel.py` embeds the pipeline modules and the trained model
+into one self-contained `../kernels/casmi26-stage2-sub/kernel.py` (+ metadata).
+Kaggle's image has no RDKit, so the kernel builds the molecule-key cache from
+the shipped `inchikey14` + `molecular_formula` columns instead
+(`dataset-creation/cache_inchikey.py`, validated: MRR@25 0.709 vs 0.707 with
+the tautomer cache, 99.5% top-1 agreement). Submit a finished version with
+`scripts/submit_kernel.py` (push → wait for "complete" →
+`--version N`; requires one-time identity verification on kaggle.com/settings).
+
+## 9. Next stages (not implemented yet)
 
 ### Stage 3: learned cross-instrument spectrum embedding
 
@@ -328,7 +358,7 @@ shortcut worth comparing.
 
 ---
 
-## 9. Files
+## 10. Files
 
 | file | content |
 |---|---|
@@ -336,6 +366,7 @@ shortcut worth comparing.
 | `library.py` | query mass, candidate index (mass window over visible molecules), parallel library loading and cache (with per-spectrum precursor, ce and source library) |
 | `stage1.py` | the stage-1 evaluation CLI |
 | `stage2.py` | the stage-2 re-ranker CLI (on-the-fly training, shared featurizer, logistic + HGB, evaluation) |
+| `predict_test.py` | the stage-2 pipeline on the competition test set (submission.csv) |
 | `test_stage1.py` | stage-1 correctness tests |
 | `test_stage2.py` | stage-2 correctness tests (incl. an end-to-end smoke test on synthetic data) |
 | `STAGE2_PLAN.md` | the implementation plan for stage 2 |

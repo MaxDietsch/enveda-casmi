@@ -20,6 +20,15 @@ python scripts/download_data.py
 ```
 
 You will need Kaggle API credentials (`~/.kaggle/kaggle.json`) for the download to work.
+After downloading, clean the spectra **once** with
+[`dataset-cleaning/`](dataset-cleaning/README.md):
+
+```bash
+uv run python dataset-cleaning/clean_data.py   # -> data/train_clean.parquet, data/test_clean.parquet
+```
+
+The cleaned copies are row-aligned with the raw files and picked up
+automatically by `dataset-creation/`'s dataloader.
 Other derived datasets (`coconut_pool.parquet`, FP caches, etc.) are produced by the
 scripts in `scripts/` (e.g. `build_coconut_pool.py`).
 

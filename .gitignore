@@ -15,6 +15,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Vendored external tools (ms-pred / ICEBERG; see max_class2_exp/README.md)
+extern/
+
 # Data and large artifacts (too big for git; see README for how to download)
 data/
 models/
@@ -35,11 +38,17 @@ kaggle_assets/
 # Rust build artifacts
 spectra-viz/target/
 
-# Eval-set simulator outputs and cache
-dataset-creation/out/
+# Eval-set simulator outputs and cache (the difficulty split parquets
+# themselves ARE versioned — every trainer's leak guard reads them; the
+# negation at the bottom of this file un-ignores them)
+dataset-creation/out/cache/
+dataset-creation/out/*.png
 
 # Class-1 experiment outputs and library cache
 max_class1_exp/out/
+
+# Class-2 experiment outputs
+max_class2_exp/out/
 
 # MLflow experiment tracking
 mlflow.db*
@@ -48,3 +57,8 @@ mlflow.env
 
 # Knowledge Base
 kb/wiki/.obsidian
+
+# The difficulty-split parquets are tiny, canonical, and load-bearing for
+# the channel-P leak guards (the trainers and stage2 read them) — version
+# them. This must stay BELOW the *.parquet rule to win.
+!dataset-creation/out/*.parquet

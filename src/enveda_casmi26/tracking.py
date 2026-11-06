@@ -123,8 +123,12 @@ def _public_uri(uri: str) -> str:
 
 
 def public_args(args) -> dict[str, Any]:
-    """Script arguments safe to log or persist (no MLflow secrets)."""
-    return {k: v for k, v in vars(args).items()
+    """Script arguments safe to log or persist (no MLflow secrets). Path
+    values become plain str so checkpoints that embed this dict stay
+    loadable with ``torch.load(..., weights_only=True)``."""
+    from pathlib import PurePath
+    return {k: (str(v) if isinstance(v, PurePath) else v)
+            for k, v in vars(args).items()
             if k != "no_mlflow" and not k.startswith("mlflow_")}
 
 

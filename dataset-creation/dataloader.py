@@ -27,6 +27,20 @@ TEST_COLUMNS = ["molecule_id", "spectrum_id", "ms2_mzs", "ms2_normalized_intensi
                 "collision_energy_orig_units"]
 PRECURSOR_MARGIN = 2.0
 
+# One-time cleaned copy written by dataset-cleaning/clean_data.py. Row-aligned
+# with train.parquet (cleaning never drops rows), so split row ids are valid
+# for both and eval spectra / training rows are served pre-cleaned.
+CLEANED_TRAIN = common.PROJECT_ROOT / "data" / "train_clean.parquet"
+
+
+def resolve_train_path(train_path=None) -> Path:
+    """Explicit path wins; else the cleaned copy if it exists; else raw train."""
+    if train_path is not None:
+        return Path(train_path)
+    if CLEANED_TRAIN.exists():
+        return CLEANED_TRAIN
+    return common.TRAIN
+
 
 def _row_group_offsets(train_path: Path) -> np.ndarray:
     md = pq.ParquetFile(train_path).metadata
@@ -71,11 +85,11 @@ class Split:
     eval_row_ids: np.ndarray
     excluded_library_keys: set
     info: dict = field(default_factory=dict)
-    train_path: Path = common.TRAIN
+    train_path: Path | None = None  # None -> resolve_train_path() at use time
 
     def eval_spectra(self, train_path: Path | None = None) -> pd.DataFrame:
         """Eval spectra with exactly the test.parquet columns, test cleaning applied."""
-        train_path = Path(train_path or self.train_path)
+        train_path = Path(train_path or self.train_path or resolve_train_path())
         row_mol = {int(r): mid for mid, rows in zip(self.truth["molecule_id"], self.truth["eval_row_ids"])
                    for r in rows}
         rows = np.array(sorted(row_mol, key=lambda r: (row_mol[r], r)), dtype=np.int64)
@@ -99,7 +113,7 @@ class Split:
 
     def iter_train(self, columns: list[str], train_path: Path | None = None):
         """Yield visible train rows one row group at a time (pa.Table with row_id)."""
-        train_path = Path(train_path or self.train_path)
+        train_path = Path(train_path or self.train_path or resolve_train_path())
         bounds = _row_group_offsets(train_path)
         pf = pq.ParquetFile(train_path)
         for g in range(pf.metadata.num_row_groups):
@@ -132,8 +146,14 @@ class Split:
         return set(molecules["key"].to_numpy()[np.unique(row_key[self.train_mask])])
 
 
-def load_split(split_path, train_path=common.TRAIN, cache_dir=common.CACHE) -> Split:
-    split_path, train_path, cache_dir = Path(split_path), Path(train_path), Path(cache_dir)
+def load_split(split_path, train_path=None, cache_dir=common.CACHE) -> Split:
+    """Load a split. train_path=None auto-prefers data/train_clean.parquet
+    (one-time output of dataset-cleaning/clean_data.py) over raw train.parquet."""
+    split_path = Path(split_path)
+    train_path = resolve_train_path(train_path)
+    if train_path == CLEANED_TRAIN:
+        common.log(f"[dataloader] using cleaned train data: {train_path}")
+    cache_dir = Path(cache_dir)
     info = common.read_split_info(split_path)
     on_disk = common.cache_hash(cache_dir)
     if info.get("cache_hash") != on_disk:

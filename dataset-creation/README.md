@@ -31,6 +31,9 @@ Run everything from the repo root (`enveda_casmi/`). It needs
 dependencies.
 
 ```bash
+# once (optional, ~30–60 min): cleaned copies of train/test used everywhere
+uv run python dataset-cleaning/clean_data.py      # -> data/train_clean.parquet, data/test_clean.parquet
+
 # once (~16 min): molecule keys, fingerprints, neighbour counts
 uv run python dataset-creation/common.py
 
@@ -444,6 +447,17 @@ from dataloader import load_split
 split = load_split("dataset-creation/out/overall.parquet")
 # optional: load_split(path, train_path="data/train.parquet", cache_dir="dataset-creation/out/cache")
 ```
+
+**Cleaned train data.** If `data/train_clean.parquet` exists (one-time output
+of [`dataset-cleaning/clean_data.py`](../dataset-cleaning/README.md)), it is
+used automatically instead of raw `train.parquet`: `eval_spectra()`,
+`iter_train()` and `train_table()` then serve fully cleaned spectra (precursor
+cutoff, deisotoping, intensity floor, top-K windows, sqrt transform; same
+`SpectrumCleaner` the kernel uses). The cleaned file is row-aligned with the
+raw one, so split row ids and the cache remain valid. Pass an explicit
+`train_path` to override. Without the cleaned file, the raw data plus the
+minimal test cleaning described in [§2.3](#23-which-spectra-can-be-eval-spectra-eligible-rows)
+is used.
 
 `load_split` takes about 0.1 s. It refuses a split that was built against
 another cache (see [§9](#9-cache-and-reproducibility)).

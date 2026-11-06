@@ -34,10 +34,13 @@ from itertools import combinations, combinations_with_replacement
 
 import numpy as np
 import pandas as pd
-from rdkit import Chem, RDLogger
-from rdkit.Chem import rdMolDescriptors
 
-RDLogger.DisableLog("rdApp.*")
+try:  # the adduct tables below are pure data; RDKit is only needed by the
+    from rdkit import Chem, RDLogger  # Fragmentor classes (not by neutral_mass
+    from rdkit.Chem import rdMolDescriptors  # or the Kaggle submission kernel)
+    RDLogger.DisableLog("rdApp.*")
+except ImportError:  # e.g. Kaggle's kernel image ships no RDKit
+    Chem = rdMolDescriptors = None
 
 MONOISOTOPIC_MASSES = {
     "H": 1.00782503223,

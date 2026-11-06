@@ -166,8 +166,35 @@ def molecule_key(smiles: str) -> str | None:
     return _smiles_info(smiles)[0]
 
 
+CLEAN_SUFFIX = "_clean.parquet"
+
+
+def prefer_cleaned(path) -> Path:
+    """The row-aligned *_clean.parquet sibling (dataset-cleaning/clean_data.py)
+    when it exists, otherwise the path itself. Cleaning never drops rows, so
+    row ids and metadata are identical for both files."""
+    path = Path(path)
+    if path.name.endswith(CLEAN_SUFFIX):
+        return path
+    cleaned = path.with_name(path.stem + CLEAN_SUFFIX)
+    return cleaned if cleaned.exists() else path
+
+
+def _raw_source(path: Path) -> Path:
+    """Underlying raw file of a *_clean.parquet derived copy, if it exists."""
+    path = Path(path)
+    if path.name.endswith(CLEAN_SUFFIX):
+        raw = path.with_name(path.name[: -len(CLEAN_SUFFIX)] + ".parquet")
+        if raw.exists():
+            return raw
+    return path
+
+
 def _train_stamp(train_path: Path) -> dict:
-    st = os.stat(train_path)
+    # Stamp the raw file: the cache holds molecule metadata only, which
+    # cleaning does not touch, so a *_clean.parquet copy must not look "newer"
+    # and trigger a pointless key-cache rebuild.
+    st = os.stat(_raw_source(train_path))
     return {"train_size": st.st_size, "train_mtime": st.st_mtime}
 
 

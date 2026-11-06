@@ -447,7 +447,9 @@ def main() -> None:
                         help="diagnostic: also draw training queries from the eval molecules "
                              "(held-out setting disjoint from the split's hidden rows); "
                              "the metric delta vs the clean run measures the label-leakage dispute")
-    parser.add_argument("--train", type=Path, default=common.TRAIN, help="train parquet")
+    parser.add_argument("--train", type=Path, default=None,
+                        help="train parquet (default: data/train_clean.parquet when present, "
+                             "else data/train.parquet)")
     parser.add_argument("--cache-dir", type=Path, default=common.CACHE, help="dataset cache directory")
     parser.add_argument("--ppm-tol", type=float, default=10.0,
                         help="eligibility ppm for the training sampler (as in make_difficulty1.py)")
