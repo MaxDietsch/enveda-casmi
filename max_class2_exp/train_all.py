@@ -57,6 +57,15 @@ def parse_args():
                     help="encoder epochs (default: train_denovo.py's, 2)")
     ap.add_argument("--spectra", type=int, default=None,
                     help="encoder training spectra cap (default: train_denovo.py's, 500k)")
+    ap.add_argument("--batch-size", type=int, default=None,
+                    help="encoder batch size (default: train_denovo.py's, 64). The "
+                         "default starves a big GPU — on a 32 GB card try 256–512")
+    ap.add_argument("--grad-accum", type=int, default=None,
+                    help="encoder gradient-accumulation steps (default: 2). Raise "
+                         "batch size and set this to 1 rather than accumulating")
+    ap.add_argument("--lr", type=float, default=None,
+                    help="encoder learning rate (default: 1e-4); scale up roughly "
+                         "linearly if you raise the effective batch size a lot")
     ap.add_argument("--seed", type=int, default=None,
                     help="seed for both trainers (default: each script's own)")
     ap.add_argument("--device", choices=["auto", "cuda", "cpu"], default=None,
@@ -185,6 +194,12 @@ def main():
         enc_cmd += ["--epochs", str(args.epochs)]
     if args.spectra is not None:
         enc_cmd += ["--spectra", str(args.spectra)]
+    if args.batch_size is not None:
+        enc_cmd += ["--batch-size", str(args.batch_size)]
+    if args.grad_accum is not None:
+        enc_cmd += ["--grad-accum", str(args.grad_accum)]
+    if args.lr is not None:
+        enc_cmd += ["--lr", str(args.lr)]
     if args.device:
         enc_cmd += ["--device", args.device]
     if args.resume:
