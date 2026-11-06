@@ -40,7 +40,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "src"))
 
 from enveda_casmi26 import tracking  # noqa: E402
-from enveda_casmi26.fp_model import DeNovoModel, allow_path_globals, encode_batch  # noqa: E402
+from enveda_casmi26.fp_model import DeNovoModel, allow_checkpoint_globals, encode_batch  # noqa: E402
 from train_denovo import eval_split_keys, load_training_data, process_spectrum, resolve_data_path  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -130,7 +130,7 @@ def run(args, tracker):
     excluded_sha = hashlib.sha256("|".join(excluded_keys).encode()).hexdigest()[:16]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    allow_path_globals()              # older encoder configs embed Path objects
+    allow_checkpoint_globals()      # older checkpoints embed Path objects / numpy priors
     ckpt = torch.load(args.encoder, map_location=device, weights_only=True)
     cfg = ckpt["config"]
     enc_meta = ckpt.get("meta") or {}
@@ -206,7 +206,7 @@ def run(args, tracker):
             opt.zero_grad()
             loss.backward()
             opt.step()
-            losses.append(float(loss))
+            losses.append(loss.item())
         head.eval()
         msg = f"epoch {epoch + 1}/{args.epochs} train bce {np.mean(losses):.4f}"
         if xv is not None:
@@ -221,7 +221,7 @@ def run(args, tracker):
                 torch.save({"state_dict": head.state_dict(),
                             "config": {"in_dim": cfg["embed_dim"], "hidden": args.hidden,
                                        "n_bits": args.n_bits},
-                            "priors": priors, "val_bce": vl,
+                            "priors": torch.from_numpy(priors), "val_bce": vl,
                             "meta": {"guard": "eval-molecules-v1",
                                      "excluded_keys": excluded_keys,
                                      "data": data_path.name,
@@ -237,7 +237,7 @@ def run(args, tracker):
         torch.save({"state_dict": head.state_dict(),
                     "config": {"in_dim": cfg["embed_dim"], "hidden": args.hidden,
                                "n_bits": args.n_bits},
-                    "priors": priors,
+                    "priors": torch.from_numpy(priors),
                     "meta": {"guard": "eval-molecules-v1",
                              "excluded_keys": excluded_keys,
                              "data": data_path.name,

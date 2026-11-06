@@ -265,8 +265,8 @@ def _load_guarded(path: Path, eval_keys: set, what: str) -> dict:
     eval molecule of the split being evaluated — leak-free is the default,
     so a checkpoint that predates the guard (no `meta`) is refused too."""
     import torch
-    from enveda_casmi26.fp_model import allow_path_globals
-    allow_path_globals()              # older encoder configs embed Path objects
+    from enveda_casmi26.fp_model import allow_checkpoint_globals
+    allow_checkpoint_globals()      # older checkpoints embed Path objects / numpy priors
     ckpt = torch.load(path, map_location="cpu", weights_only=True)
     meta = ckpt.get("meta") if isinstance(ckpt, dict) else None
     excluded = (meta or {}).get("excluded_keys")

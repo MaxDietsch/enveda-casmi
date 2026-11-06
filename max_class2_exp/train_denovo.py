@@ -42,7 +42,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from enveda_casmi26 import tracking  # noqa: E402
-from enveda_casmi26.fp_model import DeNovoModel, allow_path_globals  # noqa: E402
+from enveda_casmi26.fp_model import DeNovoModel, allow_checkpoint_globals  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -323,7 +323,7 @@ def run(args, tracker):
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     base_step = 0
     if args.resume and args.resume.exists():
-        allow_path_globals()          # older .last.pt configs embed Path objects
+        allow_checkpoint_globals()    # older .last.pt configs embed Path objects
         ckpt = torch.load(args.resume, map_location=device, weights_only=True)
         model.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:

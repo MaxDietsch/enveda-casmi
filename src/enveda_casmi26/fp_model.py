@@ -117,18 +117,25 @@ def build_fp_head(cfg: dict) -> nn.Module:
         nn.Linear(cfg["hidden"], cfg["n_bits"]))
 
 
-def allow_path_globals() -> None:
-    """Permit pathlib Path objects inside checkpoints loaded with
-    ``weights_only=True``: configs saved by older trainers embed argparse
-    Path values (harmless, our own files). Call before torch.load."""
+def allow_checkpoint_globals() -> None:
+    """Permit pathlib Path objects and raw numpy arrays inside checkpoints
+    loaded with ``weights_only=True``: configs saved by older trainers embed
+    argparse Path values, and older fp heads stored their bit priors as a
+    plain numpy array (harmless, our own files). Call before torch.load."""
     import pathlib
-    torch.serialization.add_safe_globals([pathlib.PosixPath])
+    import numpy as np
+    try:
+        from numpy._core.multiarray import _reconstruct      # numpy >= 2
+    except ImportError:                                       # numpy < 2
+        from numpy.core.multiarray import _reconstruct
+    torch.serialization.add_safe_globals(
+        [pathlib.PosixPath, _reconstruct, np.ndarray, np.dtype])
 
 
 def load_fp_model(encoder_path, head_path, device=None):
     """Load the fp encoder + head for inference (weights fp32 on any device)."""
     device = device or torch.device("cpu")
-    allow_path_globals()
+    allow_checkpoint_globals()
     enc = torch.load(encoder_path, map_location=device, weights_only=True)
     cfg = enc["config"]
     model = DeNovoModel(cfg["embed_dim"], cfg["n_layers"], cfg["n_heads"],

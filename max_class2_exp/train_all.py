@@ -120,10 +120,10 @@ def verify(paths, include_eval_molecules):
     """Re-load every artifact and check its guard covers the current splits."""
     import torch
     from train_denovo import eval_split_keys
-    from enveda_casmi26.fp_model import allow_path_globals
+    from enveda_casmi26.fp_model import allow_checkpoint_globals
 
     eval_keys = set() if include_eval_molecules else eval_split_keys()
-    allow_path_globals()              # older checkpoint configs embed Path objects
+    allow_checkpoint_globals()      # older checkpoints embed Path objects / numpy priors
     print(f"\n[train_all] === verifying the leak guards ===")
     for path, what in paths:
         if not path.exists():
